@@ -26,28 +26,44 @@ if "import_pending" not in st.session_state:
     st.session_state["import_pending"] = None
 
 def get_bureau_name(bureau_id: str) -> str:
-    """Récupère le nom exact du bureau / UO à partir de son ID"""
+    """Recherche automatique et intelligente du nom du bureau/direction à travers toutes les tables de la hiérarchie"""
     if not bureau_id:
         return "Non spécifié"
     
+    clean_id = str(bureau_id).strip()
+    
     try:
-        # 1. Chercher d'abord dans la table UO (colonne 'uo')
-        res_uo = supabase.table("uo").select("uo").eq("uo_id", bureau_id).execute()
+        # 1. Chercher d'abord dans la table UO (ex: SRE1 Analamanga)
+        res_uo = supabase.table("uo").select("uo").eq("uo_id", clean_id).execute()
         if res_uo.data and len(res_uo.data) > 0:
             val = res_uo.data[0].get("uo")
-            if val:
-                return str(val)
+            if val and str(val).strip():
+                return str(val).strip()
         
-        # 2. Chercher dans direction_rattachee (colonne 'direction_ratache')
-        res_dr = supabase.table("direction_rattachee").select("direction_ratache").eq("direction_rattache_id", bureau_id).execute()
+        # 2. Chercher dans Direction Rattachée (ex: SBI, DPR, etc.)
+        res_dr = supabase.table("direction_rattachee").select("direction_ratache").eq("direction_rattache_id", clean_id).execute()
         if res_dr.data and len(res_dr.data) > 0:
             val = res_dr.data[0].get("direction_ratache")
-            if val:
-                return str(val)
+            if val and str(val).strip():
+                return str(val).strip()
+                
+        # 3. Chercher dans Direction
+        res_dir = supabase.table("direction").select("direction").eq("direction_id", clean_id).execute()
+        if res_dir.data and len(res_dir.data) > 0:
+            val = res_dir.data[0].get("direction")
+            if val and str(val).strip():
+                return str(val).strip()
+
+        # 4. Chercher dans Ministère
+        res_min = supabase.table("ministere").select("ministere").eq("ministere_id", clean_id).execute()
+        if res_min.data and len(res_min.data) > 0:
+            val = res_min.data[0].get("ministere")
+            if val and str(val).strip():
+                return str(val).strip()
     except Exception:
         pass
         
-    return bureau_id
+    return clean_id
 
 def clean_record_for_json(record):
     """Nettoie les valeurs NaN, float invalides et adapte les types pour Supabase"""
@@ -94,10 +110,12 @@ def login():
             clean_input = login_input.strip()
             data = []
             
+            # Recherche par user_login
             resp_login = supabase.table("utilisateur").select("*").eq("user_login", clean_input).execute()
             if resp_login.data and len(resp_login.data) > 0:
                 data = resp_login.data
             else:
+                # Recherche par IM si numérique
                 try:
                     im_val = int(clean_input)
                     resp_im = supabase.table("utilisateur").select("*").eq("im", im_val).execute()
@@ -137,16 +155,20 @@ def execute_btt_insert(records_to_insert, user_bureau, action="insert", existing
 
 def main_app():
     user = st.session_state["user_info"]
-    user_bureau_id = str(user.get('bureau_id', user.get('id_uo', ''))).strip()
+    
+    # Prise en compte de bureau_id ou id_uo
+    user_bureau_id = str(user.get('bureau_id') or user.get('id_uo') or '').strip()
     user_fonction = str(user.get('fonction', '')).strip()
     is_admin = (user_fonction.lower() == 'admin')
 
+    # Recherche dynamique du nom du bureau
     bureau_name = get_bureau_name(user_bureau_id)
 
     # --- MENU LATÉRAL (PROFIL CONNECTÉ) ---
     st.sidebar.title("👤 Profil Connecté")
     st.sidebar.write(f"**Nom :** {user.get('nom', '')}")
     st.sidebar.write(f"**Bureau / UO :** {bureau_name}")
+    st.sidebar.write(f"**Code Bureau :** {user_bureau_id}")
     st.sidebar.write(f"**Fonction :** {user_fonction}")
     
     if is_admin:
@@ -175,7 +197,7 @@ def main_app():
                 st.write("### Liste globale de tous les BTT (Vue Administrateur)")
                 btt_res = supabase.table("btt").select("*").order("id", desc=True).execute()
             else:
-                st.write(f"### Liste des BTT enregistrés pour : **{bureau_name}**")
+                st.write(f"### Liste des BTT enregistrés pour : **{bureau_name}** ({user_bureau_id})")
                 btt_res = supabase.table("btt").select("*").eq("uo_id", user_bureau_id).order("id", desc=True).execute()
 
             df_btt = pd.DataFrame(btt_res.data)
@@ -309,6 +331,7 @@ def main_app():
                     uo_id_in = st.text_input("ID Bureau / UO", value=user_bureau_id, disabled=not is_admin)
                     agent_in = st.text_input("Nom de l'Agent", value=user.get('nom', ''))
                     
+                    # Récupération automatique du libellé du bureau
                     current_bureau_label = get_bureau_name(uo_id_in)
                     uo_in = st.text_input("Libellé du Bureau / UO", value=current_bureau_label)
                     
