@@ -26,45 +26,64 @@ if "import_pending" not in st.session_state:
     st.session_state["import_pending"] = None
 
 def get_bureau_name(bureau_id: str) -> str:
-    """Recherche automatique et intelligente du nom du bureau/direction à travers toutes les tables de la hiérarchie"""
+    """Recherche automatique et intelligente du nom du bureau/direction à travers toutes les tables et colonnes possibles"""
     if not bureau_id:
         return "Non spécifié"
     
     clean_id = str(bureau_id).strip()
     
     try:
-        # 1. Chercher d'abord dans la table UO (ex: SRE1 Analamanga)
-        res_uo = supabase.table("uo").select("uo").eq("uo_id", clean_id).execute()
-        if res_uo.data and len(res_uo.data) > 0:
-            val = res_uo.data[0].get("uo")
-            if val and str(val).strip():
-                return str(val).strip()
+        # 1. Tadiavina ao amin'ny tabilao UO (Unité Opérationnelle)
+        for id_col in ["uo_id", "id_uo"]:
+            for name_col in ["uo", "libelle_uo", "libelle", "nom"]:
+                try:
+                    res = supabase.table("uo").select(name_col).eq(id_col, clean_id).execute()
+                    if res.data and len(res.data) > 0:
+                        val = res.data[0].get(name_col)
+                        if val and str(val).strip():
+                            return str(val).strip()
+                except Exception:
+                    continue
         
-        # 2. Chercher dans Direction Rattachée (ex: SBI, DPR, etc.)
-        res_dr = supabase.table("direction_rattachee").select("direction_ratache").eq("direction_rattache_id", clean_id).execute()
-        if res_dr.data and len(res_dr.data) > 0:
-            val = res_dr.data[0].get("direction_ratache")
-            if val and str(val).strip():
-                return str(val).strip()
+        # 2. Tadiavina ao amin'ny Direction Rattachée
+        for id_col in ["direction_rattache_id", "id_direction_rattachee"]:
+            for name_col in ["direction_ratache", "direction_rattachee", "libelle", "nom"]:
+                try:
+                    res = supabase.table("direction_rattachee").select(name_col).eq(id_col, clean_id).execute()
+                    if res.data and len(res.data) > 0:
+                        val = res.data[0].get(name_col)
+                        if val and str(val).strip():
+                            return str(val).strip()
+                except Exception:
+                    continue
                 
-        # 3. Chercher dans Direction
-        res_dir = supabase.table("direction").select("direction").eq("direction_id", clean_id).execute()
-        if res_dir.data and len(res_dir.data) > 0:
-            val = res_dir.data[0].get("direction")
-            if val and str(val).strip():
-                return str(val).strip()
+        # 3. Tadiavina ao amin'ny tabilao Direction
+        for id_col in ["direction_id", "id_direction"]:
+            for name_col in ["direction", "libelle", "nom"]:
+                try:
+                    res = supabase.table("direction").select(name_col).eq(id_col, clean_id).execute()
+                    if res.data and len(res.data) > 0:
+                        val = res.data[0].get(name_col)
+                        if val and str(val).strip():
+                            return str(val).strip()
+                except Exception:
+                    continue
 
-        # 4. Chercher dans Ministère
-        res_min = supabase.table("ministere").select("ministere").eq("ministere_id", clean_id).execute()
-        if res_min.data and len(res_min.data) > 0:
-            val = res_min.data[0].get("ministere")
-            if val and str(val).strip():
-                return str(val).strip()
+        # 4. Tadiavina ao amin'ny tabilao Ministère
+        for id_col in ["ministere_id", "id_ministere"]:
+            for name_col in ["ministere", "libelle", "nom"]:
+                try:
+                    res = supabase.table("ministere").select(name_col).eq(id_col, clean_id).execute()
+                    if res.data and len(res.data) > 0:
+                        val = res.data[0].get(name_col)
+                        if val and str(val).strip():
+                            return str(val).strip()
+                except Exception:
+                    continue
     except Exception:
         pass
         
     return clean_id
-
 def clean_record_for_json(record):
     """Nettoie les valeurs NaN, float invalides et adapte les types pour Supabase"""
     cleaned = {}
