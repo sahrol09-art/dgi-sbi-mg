@@ -5,10 +5,10 @@ import math
 from supabase import create_client, Client
 from datetime import date
 
-# Fikirakirana ny pejy Streamlit
-st.set_page_config(page_title="Projet SBI", page_icon="🔐", layout="wide")
+# Configuration de la page Streamlit
+st.set_page_config(page_title="Projet SBI - DGI Madagascar", page_icon="🔐", layout="wide")
 
-# Ampifandraisina amin'ny Supabase amin'ny alalan'ny Streamlit Secrets
+# Connexion à Supabase
 @st.cache_resource
 def init_supabase() -> Client:
     url = st.secrets["SUPABASE_URL"]
@@ -17,7 +17,7 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# Session State ho an'ny connexion sy ny importation
+# Variables de session
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 if "user_info" not in st.session_state:
@@ -26,10 +26,8 @@ if "import_pending" not in st.session_state:
     st.session_state["import_pending"] = None
 
 def clean_record_for_json(record):
-    """Manadio ny valeur NaN, float invalide, ary mampifanaraka ny type integer/string ho an'ny Supabase"""
+    """Nettoie les valeurs NaN, float invalides et adapte les types pour Supabase"""
     cleaned = {}
-    
-    # Ireo columna tokony ho INTEGER tsotra ao amin'ny Supabase
     int_cols = ["annee", "num_btt"]
     
     for k, v in record.items():
@@ -37,12 +35,10 @@ def clean_record_for_json(record):
             cleaned[k] = None
         elif k in int_cols:
             try:
-                # Ansorahana ilay decimal .0 vokatry ny pandas float conversion
                 cleaned[k] = int(float(v))
             except (ValueError, TypeError):
                 cleaned[k] = None
         elif k == "mois":
-            # Raha ohatra ka integer na float ny mois ao anaty excel (oh: 1 na 1.0) dia avadika ho text madio "1"
             if isinstance(v, (float, int, np.number)):
                 try:
                     cleaned[k] = str(int(float(v)))
@@ -62,13 +58,13 @@ def clean_record_for_json(record):
     return cleaned
 
 def login():
-    st.title("🔐 Projet SBI - Pejy fidirana")
-    st.subheader("Mampidira ny IM sy ny Mot de passe")
+    st.title("🔐 Projet SBI - Page de Connexion")
+    st.subheader("Veuillez saisir votre Matricule (IM) et votre mot de passe")
 
     with st.form("login_form"):
-        im_input = st.number_input("Immatriculation (IM):", value=277485, step=1)
-        password_input = st.text_input("Mot de passe:", type="password")
-        submit_button = st.form_submit_button("Miditra (Se connecter)")
+        im_input = st.number_input("Immatriculation (IM) :", value=277485, step=1)
+        password_input = st.text_input("Mot de passe :", type="password")
+        submit_button = st.form_submit_button("Se connecter")
 
         if submit_button:
             response = supabase.table("utilisateur").select("*").eq("im", im_input).execute()
@@ -76,88 +72,92 @@ def login():
 
             if data and len(data) > 0:
                 user = data[0]
-                if user.get("password") == password_input:
+                if user.get("user_psw") == password_input or user.get("password") == password_input:
                     st.session_state["authenticated"] = True
                     st.session_state["user_info"] = user
-                    st.success("Tafiditra soa aman-tsara!")
+                    st.success("Connexion réussie !")
                     st.rerun()
                 else:
-                    st.error("Diso ny mot de passe!")
+                    st.error("Mot de passe incorrect !")
             else:
-                st.error("Tsy hita io IM io ao amin'ny banky angona!")
+                st.error("Matricule (IM) introuvable dans la base de données !")
 
-def execute_btt_insert(records_to_insert, user_uo, action="insert", existing_criteria=None):
+def execute_btt_insert(records_to_insert, user_bureau, action="insert", existing_criteria=None):
     try:
-        # Raha misy mise à jour (remplacer), fafana aloha ny efa ao araka ny taona sy volana
         if action == "update" and existing_criteria:
             for crit in existing_criteria:
                 supabase.table("btt").delete()\
-                    .eq("uo_id", user_uo)\
+                    .eq("uo_id", user_bureau)\
                     .eq("annee", crit["annee"])\
                     .eq("mois", crit["mois"])\
                     .execute()
 
-        # Fampidirana ny angona vaovao
         supabase.table("btt").insert(records_to_insert).execute()
-        st.success(f"✅ Vita ny importation ho an'ny UO {user_uo}!")
+        st.success(f"✅ Importation réussie pour le bureau {user_bureau} !")
         st.session_state["import_pending"] = None
         st.rerun()
     except Exception as e:
-        st.error(f"Nisy olana teo am-pampidirana: {e}")
+        st.error(f"Une erreur est survenue lors de l'enregistrement : {e}")
 
 def main_app():
     user = st.session_state["user_info"]
-    user_uo_id = str(user.get('id_uo', '')).strip()
+    user_bureau_id = str(user.get('bureau_id', user.get('id_uo', ''))).strip()
+    user_fonction = str(user.get('fonction', '')).strip()
+    is_admin = (user_fonction.lower() == 'admin')
+
+    st.sidebar.title("👤 Profil Connecté")
+    st.sidebar.write(f"**Nom :** {user.get('nom', '')}")
+    st.sidebar.write(f"**IM :** {user.get('im', '')}")
+    st.sidebar.write(f"**Fonction :** {user_fonction}")
+    st.sidebar.write(f"**ID Bureau / UO :** {user_bureau_id}")
     
-    st.sidebar.title("👤 Konty tafiditra")
-    st.sidebar.write(f"**Anarana:** {user['nom']}")
-    st.sidebar.write(f"**IM:** {user['im']}")
-    st.sidebar.write(f"**Corps:** {user['corps']}")
-    st.sidebar.write(f"**UO ID:** {user_uo_id}")
-    
-    if st.sidebar.button("Hiboaka (Se déconnecter)"):
+    if is_admin:
+        st.sidebar.success("🔑 Accès Administrateur Activé")
+
+    if st.sidebar.button("Se déconnecter"):
         st.session_state["authenticated"] = False
         st.session_state["user_info"] = None
         st.session_state["import_pending"] = None
         st.rerun()
 
-    st.title("📊 Projet SBI - Sehetra Fitantanana")
-    st.write(f"Tongasoa, **{user['nom']}**!")
+    st.title("📊 Projet SBI - Dashboard de Gestion")
+    st.write(f"Bienvenue, **{user.get('nom', '')}** !")
 
-    tab_btt, tab_uo, tab_user = st.tabs(["📄 Angona BTT", "📁 Angona UO", "👥 Angona UTILISATEUR"])
+    tab_btt, tab_uo, tab_user = st.tabs(["📄 Données BTT", "📁 Structure Organisationnelle", "👥 Gestion des Utilisateurs"])
 
     # --- TAB BTT ---
     with tab_btt:
-        st.subheader("📄 Fitantanana ny BTT")
+        st.subheader("📄 Gestion des Bordereaux de Transfert (BTT)")
 
-        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["📊 Mijery Angona", "📤 Ampiakatra Fichier Excel", "✍️ Hampiditra An-tanana"])
+        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["📊 Consulter les Données", "📤 Importer un fichier Excel", "✍️ Saisie Manuelle"])
 
-        # 1. Mijery ny angona BTT
+        # 1. Consultation des données
         with sub_tab1:
-            st.write(f"### Lisitry ny BTT voasoratra ao amin'ny Supabase (UO: {user_uo_id})")
-            btt_res = supabase.table("btt").select("*").eq("uo_id", user_uo_id).order("id", desc=True).execute()
+            if is_admin:
+                st.write("### Liste globale de tous les BTT (Vue Administrateur)")
+                btt_res = supabase.table("btt").select("*").order("id", desc=True).execute()
+            else:
+                st.write(f"### Liste des BTT enregistrés pour le bureau {user_bureau_id}")
+                btt_res = supabase.table("btt").select("*").eq("uo_id", user_bureau_id).order("id", desc=True).execute()
+
             df_btt = pd.DataFrame(btt_res.data)
-            
             if not df_btt.empty:
                 st.dataframe(df_btt, use_container_width=True)
             else:
-                st.info(f"Mbola tsy misy angona BTT ho an'ny UO {user_uo_id} aloha hatreto.")
+                st.info("Aucune donnée BTT disponible pour le moment.")
 
-        # 2. Ampiakatra Fichier Excel
+        # 2. Importation Excel
         with sub_tab2:
-            st.write("### 📤 Fampakarana Fichier Excel (Importation BTT)")
-            st.caption(f"Ny angona mifanaraka amin'ny **UO = {user_uo_id}** ihany no ho ampiakarina.")
+            st.write("### 📤 Importation de fichier Excel (BTT)")
+            st.caption(f"Seules les lignes correspondant au bureau **{user_bureau_id}** seront importées.")
             
-            uploaded_file = st.file_uploader("Fidio ny fichier Excel (.xlsx):", type=["xlsx", "xls"], key="excel_btt")
+            uploaded_file = st.file_uploader("Choisissez un fichier Excel (.xlsx) :", type=["xlsx", "xls"], key="excel_btt")
             
             if uploaded_file is not None:
                 try:
                     df_upload = pd.read_excel(uploaded_file, sheet_name="BTT")
-                    
-                    # Clean column names for matching
                     df_upload.columns = df_upload.columns.astype(str).str.strip()
 
-                    # Fampifanarahana ny anaran'ny column amin'ny Supabase
                     col_mapping = {
                         "UO_ID": "uo_id",
                         "Agent": "agent",
@@ -180,42 +180,40 @@ def main_app():
                     df_upload = df_upload.rename(columns=col_mapping)
 
                     if "uo_id" not in df_upload.columns:
-                        st.error("Tsy hita ilay columna 'UO_ID' na 'uo_id' ao anaty fichier Excel!")
+                        st.error("La colonne 'UO_ID' est introuvable dans le fichier Excel.")
                     else:
-                        # Convert column UO_ID to string
                         df_upload["uo_id"] = df_upload["uo_id"].astype(str).str.strip()
 
-                        # 1. Filtre par ID_UO
-                        df_user_data = df_upload[df_upload["uo_id"] == user_uo_id].copy()
-
-                        # CRITÈRE: Raha tsy misy donnée ho an'io ID_UO io
-                        if df_user_data.empty:
-                            st.warning(f"⚠️ Tsy misy ID_UO = {user_uo_id} sy UO ao anatin'ilay fichier emporté-na!")
+                        if is_admin:
+                            df_user_data = df_upload.copy()
                         else:
-                            st.success(f"Hita ao anaty fichier: Andalana {len(df_user_data)} mifanaraka amin'ny UO = {user_uo_id}")
+                            df_user_data = df_upload[df_upload["uo_id"] == user_bureau_id].copy()
+
+                        if df_user_data.empty:
+                            st.warning(f"⚠️ Aucune donnée correspondant à l'ID Bureau = {user_bureau_id} n'a été trouvée dans ce fichier.")
+                        else:
+                            st.success(f"{len(df_user_data)} ligne(s) trouvée(s) pour l'importation.")
                             st.dataframe(df_user_data.head(), use_container_width=True)
 
-                            if st.button("🚀 Hanomboka ny Importation", key="btn_check_import"):
-                                # Format Dates
+                            if st.button("🚀 Lancer l'importation", key="btn_check_import"):
                                 for d_col in ["date_periode_debut", "date_periode_fin", "date_degagement"]:
                                     if d_col in df_user_data.columns:
                                         df_user_data[d_col] = pd.to_datetime(df_user_data[d_col], errors='coerce').dt.strftime('%Y-%m-%d')
 
-                                # Clean records explicitly for JSON compliance and type safety
                                 raw_records = df_user_data.to_dict(orient="records")
                                 records = [clean_record_for_json(r) for r in raw_records]
 
-                                # 2. Check for Existing Data in Supabase (ID_UO, Année, Mois)
                                 existing_criteria = []
                                 conflicts_found = False
 
                                 for r in records:
                                     annee_val = r.get("annee")
                                     mois_val = r.get("mois")
+                                    target_uo = r.get("uo_id", user_bureau_id)
 
                                     if annee_val is not None and mois_val is not None:
                                         check_res = supabase.table("btt").select("id")\
-                                            .eq("uo_id", user_uo_id)\
+                                            .eq("uo_id", target_uo)\
                                             .eq("annee", int(annee_val))\
                                             .eq("mois", str(mois_val))\
                                             .execute()
@@ -233,56 +231,55 @@ def main_app():
                                     }
                                     st.rerun()
                                 else:
-                                    execute_btt_insert(records, user_uo_id, action="insert")
+                                    execute_btt_insert(records, user_bureau_id, action="insert")
 
                 except Exception as e:
-                    st.error(f"Nisy olana teo am-pamakiana ilay fichier: {e}")
+                    st.error(f"Erreur lors de la lecture du fichier : {e}")
 
-            # Modal / Prompts for Conflict Resolution
             if st.session_state.get("import_pending"):
                 pending = st.session_state["import_pending"]
                 st.write("---")
-                st.warning("⚠️ **Efa misy angona mifanaraka amin'io ID_UO, Année, ary Mois io ao amin'ny Supabase:**")
+                st.warning("⚠️ **Des données existent déjà pour la même période (Année / Mois) :**")
                 for c in pending["existing_criteria"]:
-                    st.write(f"- **Année:** {c['annee']} | **Mois:** {c['mois']}")
+                    st.write(f"- **Année :** {c['annee']} | **Mois :** {c['mois']}")
 
-                st.write("### Safidio ny zavatra tianao atao:")
+                st.write("### Choisissez une action :")
                 col_act1, col_act2 = st.columns(2)
 
                 with col_act1:
-                    if st.button("🔄 Hanao Mise à jour (Remplacer)"):
+                    if st.button("🔄 Mettre à jour (Remplacer)"):
                         execute_btt_insert(
                             pending["records"], 
-                            user_uo_id, 
+                            user_bureau_id, 
                             action="update", 
                             existing_criteria=pending["existing_criteria"]
                         )
 
                 with col_act2:
-                    if st.button("🛡️ Tazomina ihany ny efa ao (Conserver)"):
+                    if st.button("🛡️ Conserver les données existantes (Annuler)"):
                         st.session_state["import_pending"] = None
-                        st.info("Nocancel-na ny importation. Nitazona ny angona efa teo aloha.")
+                        st.info("Importation annulée. Les données existantes sont conservées.")
                         st.rerun()
 
-        # 3. Hampiditra An-tanana (Saisie)
+        # 3. Saisie Manuelle
         with sub_tab3:
-            st.write("### ✍️ Formulaire Fampidirana BTT Vaovao")
+            st.write("### ✍️ Formulaire de saisie d'un nouveau BTT")
             with st.form("form_btt_saisie"):
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    uo_id_in = st.text_input("UO ID", value=user_uo_id, disabled=True)
-                    agent_in = st.text_input("Agent", value=user.get('nom', ''))
-                    uo_in = st.text_input("Libellé UO")
+                    uo_id_in = st.text_input("ID Bureau / UO", value=user_bureau_id, disabled=not is_admin)
+                    agent_in = st.text_input("Nom de l'Agent", value=user.get('nom', ''))
+                    uo_in = st.text_input("Libellé du Bureau / UO")
                     annee_in = st.number_input("Année", value=2026, step=1)
                     mois_in = st.selectbox("Mois", ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"])
 
                 with col2:
                     num_btt_in = st.text_input("N° BTT")
                     lieu_in = st.text_input("Lieu de dégagement")
-                    date_debut_in = st.date_input("Date période début", value=date.today())
-                    date_fin_in = st.date_input("Date période fin", value=date.today())
-                    date_deg_in = st.date_input("Date dégagement", value=date.today())
+                    date_debut_in = st.date_input("Date début période", value=date.today())
+                    date_fin_in = st.date_input("Date fin période", value=date.today())
+                    date_deg_in = st.date_input("Date de dégagement", value=date.today())
 
                 with col3:
                     numeraire_in = st.number_input("Numéraire / Espèce", value=0.0)
@@ -290,12 +287,12 @@ def main_app():
                     virement_in = st.number_input("Virement", value=0.0)
                     observation_in = st.text_area("Observation")
 
-                submit_btt = st.form_submit_button("Hampiditra (Enregistrer BTT)")
+                submit_btt = st.form_submit_button("Enregistrer le BTT")
 
                 if submit_btt:
                     btt_total_val = numeraire_in + cheque_in + virement_in
                     new_btt = {
-                        "uo_id": user_uo_id,
+                        "uo_id": uo_id_in,
                         "agent": agent_in,
                         "uo": uo_in,
                         "annee": int(annee_in),
@@ -312,24 +309,44 @@ def main_app():
                         "observation": observation_in
                     }
                     supabase.table("btt").insert(new_btt).execute()
-                    st.success("Tafiditra soa aman-tsara ny BTT vaovao!")
+                    st.success("Nouveau BTT enregistré avec succès !")
                     st.rerun()
 
-    # --- TAB UO ---
+    # --- TAB STRUCTURE UO / DIRECTION ---
     with tab_uo:
-        st.subheader("Tabilao UO (Unité Organisationnelle)")
-        uo_response = supabase.table("uo").select("*").execute()
-        df_uo = pd.DataFrame(uo_response.data)
-        st.dataframe(df_uo, use_container_width=True)
+        st.subheader("📁 Structure Organisationnelle de la DGI")
+        
+        tab_dir, tab_dir_rat, tab_uo_list = st.tabs(["Directions", "Directions Rattachées / DRI", "Unités Opérationnelles (UO)"])
+        
+        with tab_dir:
+            res_dir = supabase.table("direction").select("*").execute()
+            st.dataframe(pd.DataFrame(res_dir.data), use_container_width=True)
+            
+        with tab_dir_rat:
+            res_dir_rat = supabase.table("direction_rattachee").select("*").execute()
+            st.dataframe(pd.DataFrame(res_dir_rat.data), use_container_width=True)
+            
+        with tab_uo_list:
+            res_uo = supabase.table("uo").select("*").execute()
+            st.dataframe(pd.DataFrame(res_uo.data), use_container_width=True)
 
     # --- TAB UTILISATEUR ---
     with tab_user:
-        st.subheader("Tabilao UTILISATEUR")
-        user_response = supabase.table("utilisateur").select("*").execute()
-        df_user = pd.DataFrame(user_response.data)
-        if "password" in df_user.columns:
-            df_user = df_user.drop(columns=["password"])
-        st.dataframe(df_user, use_container_width=True)
+        st.subheader("👥 Liste des Utilisateurs")
+        if is_admin:
+            user_response = supabase.table("utilisateur").select("*").execute()
+            df_user = pd.DataFrame(user_response.data)
+            if "user_psw" in df_user.columns:
+                df_user = df_user.drop(columns=["user_psw"])
+            if "password" in df_user.columns:
+                df_user = df_user.drop(columns=["password"])
+            st.dataframe(df_user, use_container_width=True)
+        else:
+            user_response = supabase.table("utilisateur").select("*").eq("bureau_id", user_bureau_id).execute()
+            df_user = pd.DataFrame(user_response.data)
+            if "user_psw" in df_user.columns:
+                df_user = df_user.drop(columns=["user_psw"])
+            st.dataframe(df_user, use_container_width=True)
 
 if not st.session_state["authenticated"]:
     login()
