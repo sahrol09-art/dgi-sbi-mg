@@ -33,58 +33,31 @@ def get_bureau_name(bureau_id: str) -> str:
     clean_id = str(bureau_id).strip()
     
     try:
-        # 1. Tadiavina ao amin'ny tabilao UO (Unité Opérationnelle)
-        for id_col in ["ID_UO", "uo_id", "id_uo"]:
-            for name_col in ["Libelle_UO", "uo", "libelle_uo", "libelle", "nom"]:
-                try:
-                    res = supabase.table("uo").select(name_col).eq(id_col, clean_id).execute()
-                    if res.data and len(res.data) > 0:
-                        val = res.data[0].get(name_col)
-                        if val and str(val).strip():
-                            return str(val).strip()
-                except Exception:
-                    continue
+        # 1. Tadiavina ao amin'ny tabilao uo mitady ny ID sy ny Anarana amin'ny zoro rehetra
+        res_uo = supabase.table("uo").select("*").execute()
+        if res_uo.data:
+            for row in res_uo.data:
+                # Jerena daholo ny keys rehetra ao amin'ny row sao misy mitovy amin'ny bureau_id
+                for k, v in row.items():
+                    if v and str(v).strip() == clean_id:
+                        # Raha hita dia tadiavina ao amin'ilay row ihany izay mety ho libellé na anarana
+                        for name_k in ["uo", "Libelle_UO", "libelle_uo", "libelle", "nom", "direction"]:
+                            if row.get(name_k) and str(row.get(name_k)).strip() != clean_id:
+                                return str(row.get(name_k)).strip()
         
-        # 2. Tadiavina ao amin'ny Direction Rattachée
-        for id_col in ["direction_rattache_id", "id_direction_rattachee", "Direction_ratache_ID"]:
-            for name_col in ["direction_ratache", "direction_rattachee", "libelle", "nom"]:
-                try:
-                    res = supabase.table("direction_rattachee").select(name_col).eq(id_col, clean_id).execute()
-                    if res.data and len(res.data) > 0:
-                        val = res.data[0].get(name_col)
-                        if val and str(val).strip():
-                            return str(val).strip()
-                except Exception:
-                    continue
-                
-        # 3. Tadiavina ao amin'ny tabilao Direction
-        for id_col in ["direction_id", "id_direction"]:
-            for name_col in ["direction", "libelle", "nom"]:
-                try:
-                    res = supabase.table("direction").select(name_col).eq(id_col, clean_id).execute()
-                    if res.data and len(res.data) > 0:
-                        val = res.data[0].get(name_col)
-                        if val and str(val).strip():
-                            return str(val).strip()
-                except Exception:
-                    continue
-
-        # 4. Tadiavina ao amin'ny tabilao Ministère
-        for id_col in ["ministere_id", "id_ministere"]:
-            for name_col in ["ministere", "libelle", "nom"]:
-                try:
-                    res = supabase.table("ministere").select(name_col).eq(id_col, clean_id).execute()
-                    if res.data and len(res.data) > 0:
-                        val = res.data[0].get(name_col)
-                        if val and str(val).strip():
-                            return str(val).strip()
-                except Exception:
-                    continue
+        # 2. Tadiavina ao amin'ny direction_rattachee
+        res_dr = supabase.table("direction_rattachee").select("*").execute()
+        if res_dr.data:
+            for row in res_dr.data:
+                for k, v in row.items():
+                    if v and str(v).strip() == clean_id:
+                        for name_k in ["direction_ratache", "direction_rattachee", "libelle", "nom"]:
+                            if row.get(name_k) and str(row.get(name_k)).strip() != clean_id:
+                                return str(row.get(name_k)).strip()
     except Exception:
         pass
         
     return clean_id
-
 def clean_record_for_json(record):
     """Nettoie les valeurs NaN, float invalides et adapte les types pour Supabase"""
     cleaned = {}
