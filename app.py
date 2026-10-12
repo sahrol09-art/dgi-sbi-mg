@@ -26,38 +26,31 @@ if "import_pending" not in st.session_state:
     st.session_state["import_pending"] = None
 
 def get_bureau_name(bureau_id: str) -> str:
-    """Recherche automatique et intelligente du nom du bureau/direction à travers toutes les tables et colonnes possibles"""
+    """Récupère directement le nom du bureau depuis la table uo"""
     if not bureau_id:
         return "Non spécifié"
     
     clean_id = str(bureau_id).strip()
     
     try:
-        # 1. Tadiavina ao amin'ny tabilao uo mitady ny ID sy ny Anarana amin'ny zoro rehetra
-        res_uo = supabase.table("uo").select("*").execute()
-        if res_uo.data:
-            for row in res_uo.data:
-                # Jerena daholo ny keys rehetra ao amin'ny row sao misy mitovy amin'ny bureau_id
-                for k, v in row.items():
-                    if v and str(v).strip() == clean_id:
-                        # Raha hita dia tadiavina ao amin'ilay row ihany izay mety ho libellé na anarana
-                        for name_k in ["uo", "Libelle_UO", "libelle_uo", "libelle", "nom", "direction"]:
-                            if row.get(name_k) and str(row.get(name_k)).strip() != clean_id:
-                                return str(row.get(name_k)).strip()
-        
-        # 2. Tadiavina ao amin'ny direction_rattachee
-        res_dr = supabase.table("direction_rattachee").select("*").execute()
-        if res_dr.data:
-            for row in res_dr.data:
-                for k, v in row.items():
-                    if v and str(v).strip() == clean_id:
-                        for name_k in ["direction_ratache", "direction_rattachee", "libelle", "nom"]:
-                            if row.get(name_k) and str(row.get(name_k)).strip() != clean_id:
-                                return str(row.get(name_k)).strip()
+        # Tadiavina mivantana amin'ny uo_id ny sanda ao amin'ny column uo
+        res = supabase.table("uo").select("uo").eq("uo_id", clean_id).execute()
+        if res.data and len(res.data) > 0:
+            val = res.data[0].get("uo")
+            if val and str(val).strip():
+                return str(val).strip()
+                
+        # Raha tsy hita ao amin'ny uo dia jerena ao amin'ny direction_rattachee
+        res_dr = supabase.table("direction_rattachee").select("direction_ratache").eq("direction_rattache_id", clean_id).execute()
+        if res_dr.data and len(res_dr.data) > 0:
+            val_dr = res_dr.data[0].get("direction_ratache")
+            if val_dr and str(val_dr).strip():
+                return str(val_dr).strip()
     except Exception:
         pass
         
     return clean_id
+
 def clean_record_for_json(record):
     """Nettoie les valeurs NaN, float invalides et adapte les types pour Supabase"""
     cleaned = {}
