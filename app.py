@@ -59,15 +59,16 @@ def clean_record_for_json(record):
 
 def login():
     st.title("🔐 Projet SBI - Page de Connexion")
-    st.subheader("Veuillez saisir votre Matricule (IM) et votre mot de passe")
+    st.subheader("Veuillez saisir votre Identifiant (Login) et votre mot de passe")
 
     with st.form("login_form"):
-        im_input = st.number_input("Immatriculation (IM) :", value=277485, step=1)
+        login_input = st.text_input("Identifiant (Login) :", value="roland")
         password_input = st.text_input("Mot de passe :", type="password")
         submit_button = st.form_submit_button("Se connecter")
 
         if submit_button:
-            response = supabase.table("utilisateur").select("*").eq("im", im_input).execute()
+            # Recherche par user_login
+            response = supabase.table("utilisateur").select("*").eq("user_login", login_input.strip()).execute()
             data = response.data
 
             if data and len(data) > 0:
@@ -80,7 +81,7 @@ def login():
                 else:
                     st.error("Mot de passe incorrect !")
             else:
-                st.error("Matricule (IM) introuvable dans la base de données !")
+                st.error("Identifiant (Login) introuvable dans la base de données !")
 
 def execute_btt_insert(records_to_insert, user_bureau, action="insert", existing_criteria=None):
     try:
@@ -107,7 +108,7 @@ def main_app():
 
     st.sidebar.title("👤 Profil Connecté")
     st.sidebar.write(f"**Nom :** {user.get('nom', '')}")
-    st.sidebar.write(f"**IM :** {user.get('im', '')}")
+    st.sidebar.write(f"**Login :** {user.get('user_login', '')}")
     st.sidebar.write(f"**Fonction :** {user_fonction}")
     st.sidebar.write(f"**ID Bureau / UO :** {user_bureau_id}")
     
