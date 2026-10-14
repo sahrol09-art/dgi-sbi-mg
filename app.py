@@ -26,26 +26,55 @@ if "import_pending" not in st.session_state:
     st.session_state["import_pending"] = None
 
 def get_bureau_name(bureau_id: str) -> str:
-    """Récupère directement le nom du bureau depuis la table uo"""
+    """Recherche intelligente basée sur le nombre de tirets (-) dans le Bureau_ID"""
     if not bureau_id:
         return "Non spécifié"
     
     clean_id = str(bureau_id).strip()
+    hyphen_count = clean_id.count("-")
     
     try:
-        # Tadiavina mivantana amin'ny uo_id ny sanda ao amin'ny column uo
-        res = supabase.table("uo").select("uo").eq("uo_id", clean_id).execute()
-        if res.data and len(res.data) > 0:
-            val = res.data[0].get("uo")
-            if val and str(val).strip():
-                return str(val).strip()
-                
-        # Raha tsy hita ao amin'ny uo dia jerena ao amin'ny direction_rattachee
-        res_dr = supabase.table("direction_rattachee").select("direction_ratache").eq("direction_rattache_id", clean_id).execute()
-        if res_dr.data and len(res_dr.data) > 0:
-            val_dr = res_dr.data[0].get("direction_ratache")
-            if val_dr and str(val_dr).strip():
-                return str(val_dr).strip()
+        # 1) Nombre de "-" = 0 ➔ Table Ministère
+        if hyphen_count == 0:
+            res = supabase.table("ministere").select("ministere").eq("ministere_id", clean_id).execute()
+            if res.data and len(res.data) > 0:
+                val = res.data[0].get("ministere")
+                if val:
+                    return str(val).strip()
+        
+        # 2) Nombre de "-" = 1 ➔ Table Direction
+        elif hyphen_count == 1:
+            res = supabase.table("direction").select("direction").eq("direction_id", clean_id).execute()
+            if res.data and len(res.data) > 0:
+                val = res.data[0].get("direction")
+                if val:
+                    return str(val).strip()
+        
+        # 3) Nombre de "-" = 2 ➔ Table Direction Rattachée
+        elif hyphen_count == 2:
+            for id_col in ["direction_rattache_id", "id_direction_rattachee", "Direction_ratache_ID"]:
+                for name_col in ["direction_ratache", "direction_rattachee"]:
+                    try:
+                        res = supabase.table("direction_rattachee").select(name_col).eq(id_col, clean_id).execute()
+                        if res.data and len(res.data) > 0:
+                            val = res.data[0].get(name_col)
+                            if val:
+                                return str(val).strip()
+                    except Exception:
+                        continue
+        
+        # 4) Nombre de "-" >= 3 ➔ Table UO
+        elif hyphen_count >= 3:
+            for id_col in ["ID_UO", "uo_id", "id_uo"]:
+                for name_col in ["Libelle_UO", "uo", "libelle_uo"]:
+                    try:
+                        res = supabase.table("uo").select(name_col).eq(id_col, clean_id).execute()
+                        if res.data and len(res.data) > 0:
+                            val = res.data[0].get(name_col)
+                            if val:
+                                return str(val).strip()
+                    except Exception:
+                        continue
     except Exception:
         pass
         
@@ -96,12 +125,10 @@ def login():
             clean_input = login_input.strip()
             data = []
             
-            # Recherche par user_login
             resp_login = supabase.table("utilisateur").select("*").eq("user_login", clean_input).execute()
             if resp_login.data and len(resp_login.data) > 0:
                 data = resp_login.data
             else:
-                # Recherche par IM si numérique
                 try:
                     im_val = int(clean_input)
                     resp_im = supabase.table("utilisateur").select("*").eq("im", im_val).execute()
@@ -142,12 +169,10 @@ def execute_btt_insert(records_to_insert, user_bureau, action="insert", existing
 def main_app():
     user = st.session_state["user_info"]
     
-    # Prise en compte de bureau_id ou id_uo
     user_bureau_id = str(user.get('bureau_id') or user.get('id_uo') or '').strip()
     user_fonction = str(user.get('fonction', '')).strip()
     is_admin = (user_fonction.lower() == 'admin')
 
-    # Recherche dynamique du nom du bureau
     bureau_name = get_bureau_name(user_bureau_id)
 
     # --- MENU LATÉRAL (PROFIL CONNECTÉ) ---
@@ -177,7 +202,6 @@ def main_app():
 
         sub_tab1, sub_tab2, sub_tab3 = st.tabs(["📊 Consulter les Données", "📤 Importer un fichier Excel", "✍️ Saisie Manuelle"])
 
-        # 1. Consultation des données
         with sub_tab1:
             if is_admin:
                 st.write("### Liste globale de tous les BTT (Vue Administrateur)")
@@ -192,7 +216,6 @@ def main_app():
             else:
                 st.info("Aucune donnée BTT disponible pour le moment.")
 
-        # 2. Importation Excel
         with sub_tab2:
             st.write("### 📤 Importation de fichier Excel (BTT)")
             st.caption(f"Seules les lignes correspondant au bureau **{bureau_name}** ({user_bureau_id}) seront importées.")
@@ -307,7 +330,6 @@ def main_app():
                         st.info("Importation annulée. Les données existantes sont conservées.")
                         st.rerun()
 
-        # 3. Saisie Manuelle
         with sub_tab3:
             st.write("### ✍️ Formulaire de saisie d'un nouveau BTT")
             with st.form("form_btt_saisie"):
@@ -317,7 +339,6 @@ def main_app():
                     uo_id_in = st.text_input("ID Bureau / UO", value=user_bureau_id, disabled=not is_admin)
                     agent_in = st.text_input("Nom de l'Agent", value=user.get('nom', ''))
                     
-                    # Récupération automatique du libellé du bureau
                     current_bureau_label = get_bureau_name(uo_id_in)
                     uo_in = st.text_input("Libellé du Bureau / UO", value=current_bureau_label)
                     
