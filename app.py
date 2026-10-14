@@ -4,6 +4,8 @@ import numpy as np
 import math
 from supabase import create_client, Client
 from datetime import date
+import qrcode
+from io import BytesIO
 
 # Configuration de la page Streamlit
 st.set_page_config(page_title="SBI - DGI Madagascar", page_icon="🏛️", layout="wide")
@@ -131,6 +133,15 @@ def clean_record_for_json(record):
             cleaned[k] = str(v).strip()
     return cleaned
 
+def generate_qr_code(url: str):
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    return buffered.getvalue()
+
 def login():
     st.title("🔐 Page de Connexion")
     with st.form("login_form"):
@@ -173,7 +184,7 @@ def main_app():
 
     bureau_name = get_bureau_name(user_bureau_id)
 
-    # --- VOLET GAUCHE (MENU STRUCTURÉ EN FRANÇAIS AVEC BOUTONS/ICONS) ---
+    # --- VOLET GAUCHE (MENU STRUCTURÉ PROPRE) ---
     st.sidebar.title("📌 Navigation")
     
     menu_choice = st.sidebar.radio(
@@ -182,6 +193,7 @@ def main_app():
             "👤 Profil connecté", 
             "📁 Structure organisationnelle", 
             "👥 Gestion des utilisateurs", 
+            "📱 Code QR Application",
             "💰 Recette", 
             "💳 Virement", 
             "📊 BAR", 
@@ -270,6 +282,14 @@ def main_app():
             user_response = supabase.table("utilisateur").select("*").eq("bureau_id", user_bureau_id).execute()
             df_user = pd.DataFrame(user_response.data)
             st.dataframe(df_user, use_container_width=True)
+
+    elif "Code QR" in menu_choice:
+        st.subheader("📱 Code QR de l'Application")
+        st.write("Scannez ce code QR avec un téléphone mobile pour accéder directement à l'application SBI.")
+        app_url = "https://dgi-sbi-mg-z9ussubgf28w7rderjjchy.streamlit.app"
+        qr_bytes = generate_qr_code(app_url)
+        st.image(qr_bytes, width=250)
+        st.code(app_url, language="text")
 
     elif "Recette" in menu_choice:
         st.subheader("💰 Suivi des Recettes")
