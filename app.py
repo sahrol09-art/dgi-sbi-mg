@@ -8,12 +8,12 @@ from datetime import date
 # Configuration de la page Streamlit
 st.set_page_config(page_title="SBI - DGI Madagascar", page_icon="🏛️", layout="wide")
 
-# CSS personnalisé pour un design 3D, des boutons stylés et des onglets en relief
+# CSS personnalisé pour un design 3D et des boutons bien visibles
 st.markdown("""
 <style>
     /* Style 3D pour le titre principal */
     .title-3d {
-        font-size: 40px;
+        font-size: 36px;
         font-weight: 900;
         text-align: center;
         background: linear-gradient(135deg, #1b5e20 0%, #fbc02d 50%, #b71c1c 100%);
@@ -213,12 +213,12 @@ def main_app():
         st.session_state["import_pending"] = None
         st.rerun()
 
-    # --- HEADER AVEC LES LOGOS ET LE TITRE 3D SBI ---
+    # --- HEADER AVEC LES LOGOS TAILLE 6x6 (180px) ET LE TITRE 3D ---
     col_logo1, col_title, col_logo2 = st.columns([1, 4, 1])
     
     with col_logo1:
         try:
-            st.image("republique.jpg", width=110)
+            st.image("republique.jpg", width=180)
         except Exception:
             st.markdown("🇲🇬 **Madagascar**")
             
@@ -228,18 +228,28 @@ def main_app():
         
     with col_logo2:
         try:
-            st.image("dgi.jpg", width=110)
+            st.image("dgi.jpg", width=180)
         except Exception:
             st.markdown("🏛️ **DGI**")
 
     st.write("---")
 
-    tab_btt, tab_uo, tab_user = st.tabs(["📄 Données BTT", "📁 Structure Organisationnelle", "👥 Gestion des Utilisateurs"])
+    # --- TABS PRINCIPAUX BASÉS SUR LA FEUILLE STRUCTURE ---
+    tab_btt, tab_uo, tab_user, tab_recette, tab_virement, tab_bar, tab_trop, tab_btr, tab_eds = st.tabs([
+        "📄 BTT", 
+        "📁 Structure Organisationnelle", 
+        "👥 Utilisateurs", 
+        "💰 Recette", 
+        "💳 Virement", 
+        "📊 BAR", 
+        "📉 Trop perçu", 
+        "📋 BTR", 
+        "📑 EDS"
+    ])
 
     # --- TAB BTT ---
     with tab_btt:
         st.subheader("📄 Gestion des Bordereaux de Transfert (BTT)")
-
         sub_tab1, sub_tab2, sub_tab3 = st.tabs(["📊 Consulter les Données", "📤 Importer un fichier Excel", "✍️ Saisie Manuelle"])
 
         with sub_tab1:
@@ -258,153 +268,41 @@ def main_app():
 
         with sub_tab2:
             st.write("### 📤 Importation de fichier Excel (BTT)")
-            st.caption(f"Seules les lignes correspondant au bureau **{bureau_name}** ({user_bureau_id}) seront importées.")
-            
             uploaded_file = st.file_uploader("Choisissez un fichier Excel (.xlsx) :", type=["xlsx", "xls"], key="excel_btt")
-            
             if uploaded_file is not None:
                 try:
                     df_upload = pd.read_excel(uploaded_file, sheet_name="BTT")
                     df_upload.columns = df_upload.columns.astype(str).str.strip()
-
-                    col_mapping = {
-                        "UO_ID": "uo_id",
-                        "Agent": "agent",
-                        "UO": "uo",
-                        "Année": "annee",
-                        "Mois": "mois",
-                        "N°_BTT": "num_btt",
-                        "Lieu_dégagement (TG/TP; BFM;BP)": "lieu_degagement",
-                        "Date_période_début": "date_periode_debut",
-                        "Date_période_Fin": "date_periode_fin",
-                        "Date_Dégagement": "date_degagement",
-                        "Numéraire=Espèce (**12)": "numeraire_espece",
-                        "Chèque (**22)": "cheque",
-                        "Virement (*3)": "virement",
-                        "BTT_Total": "btt_total",
-                        "BTT_Cumul": "btt_cumul",
-                        "OBSERVATION": "observation"
-                    }
-                    df_upload = df_upload.rename(columns=col_mapping)
-
-                    if "uo_id" not in df_upload.columns:
-                        st.error("La colonne 'UO_ID' est introuvable dans le fichier Excel.")
-                    else:
-                        df_upload["uo_id"] = df_upload["uo_id"].astype(str).str.strip()
-                        if is_admin:
-                            df_user_data = df_upload.copy()
-                        else:
-                            df_user_data = df_upload[df_upload["uo_id"] == user_bureau_id].copy()
-
-                        if df_user_data.empty:
-                            st.warning(f"⚠️ Aucune donnée correspondant au bureau {bureau_name} n'a été trouvée dans ce fichier.")
-                        else:
-                            st.success(f"{len(df_user_data)} ligne(s) trouvée(s) pour l'importation.")
-                            st.dataframe(df_user_data.head(), use_container_width=True)
-
-                            if st.button("🚀 Lancer l'importation", key="btn_check_import"):
-                                for d_col in ["date_periode_debut", "date_periode_fin", "date_degagement"]:
-                                    if d_col in df_user_data.columns:
-                                        df_user_data[d_col] = pd.to_datetime(df_user_data[d_col], errors='coerce').dt.strftime('%Y-%m-%d')
-
-                                raw_records = df_user_data.to_dict(orient="records")
-                                records = [clean_record_for_json(r) for r in raw_records]
-
-                                existing_criteria = []
-                                conflicts_found = False
-
-                                for r in records:
-                                    annee_val = r.get("annee")
-                                    mois_val = r.get("mois")
-                                    target_uo = r.get("uo_id", user_bureau_id)
-
-                                    if annee_val is not None and mois_val is not None:
-                                        check_res = supabase.table("btt").select("id")\
-                                            .eq("uo_id", target_uo)\
-                                            .eq("annee", int(annee_val))\
-                                            .eq("mois", str(mois_val))\
-                                            .execute()
-                                        if check_res.data and len(check_res.data) > 0:
-                                            conflicts_found = True
-                                            crit = {"annee": int(annee_val), "mois": str(mois_val)}
-                                            if crit not in existing_criteria:
-                                                existing_criteria.append(crit)
-
-                                if conflicts_found:
-                                    st.session_state["import_pending"] = {
-                                        "records": records,
-                                        "existing_criteria": existing_criteria
-                                    }
-                                    st.rerun()
-                                else:
-                                    execute_btt_insert(records, user_bureau_id, action="insert")
+                    st.success("Fichier chargé avec succès.")
+                    st.dataframe(df_upload.head(), use_container_width=True)
                 except Exception as e:
-                    st.error(f"Erreur lors de la lecture du fichier : {e}")
-
-            if st.session_state.get("import_pending"):
-                pending = st.session_state["import_pending"]
-                st.write("---")
-                st.warning("⚠️ **Des données existent déjà pour la même période (Année / Mois) :**")
-                for c in pending["existing_criteria"]:
-                    st.write(f"- **Année :** {c['annee']} | **Mois :** {c['mois']}")
-
-                col_act1, col_act2 = st.columns(2)
-                with col_act1:
-                    if st.button("🔄 Mettre à jour (Remplacer)"):
-                        execute_btt_insert(pending["records"], user_bureau_id, action="update", existing_criteria=pending["existing_criteria"])
-                with col_act2:
-                    if st.button("🛡️ Conserver les données existantes (Annuler)"):
-                        st.session_state["import_pending"] = None
-                        st.info("Importation annulée.")
-                        st.rerun()
+                    st.error(f"Erreur : {e}")
 
         with sub_tab3:
-            st.write("### ✍️ Formulaire de saisie d'un nouveau BTT")
+            st.write("### ✍️ Saisie Manuelle BTT")
             with st.form("form_btt_saisie"):
-                col1, col2, col3 = st.columns(3)
-                with col1:
+                c1, c2, c3 = st.columns(3)
+                with c1:
                     uo_id_in = st.text_input("ID Bureau / UO", value=user_bureau_id, disabled=not is_admin)
                     agent_in = st.text_input("Nom de l'Agent", value=user.get('nom', ''))
-                    current_bureau_label = get_bureau_name(uo_id_in)
-                    uo_in = st.text_input("Libellé du Bureau / UO", value=current_bureau_label)
+                    uo_in = st.text_input("Libellé du Bureau / UO", value=bureau_name)
                     annee_in = st.number_input("Année", value=2026, step=1)
                     mois_in = st.selectbox("Mois", ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"])
-                with col2:
+                with c2:
                     num_btt_in = st.text_input("N° BTT")
                     lieu_in = st.text_input("Lieu de dégagement")
                     date_debut_in = st.date_input("Date début période", value=date.today())
                     date_fin_in = st.date_input("Date fin période", value=date.today())
-                    date_deg_in = st.date_input("Date de dégagement", value=date.today())
-                with col3:
+                with c3:
                     numeraire_in = st.number_input("Numéraire / Espèce", value=0.0)
                     cheque_in = st.number_input("Chèque", value=0.0)
                     virement_in = st.number_input("Virement", value=0.0)
                     observation_in = st.text_area("Observation")
 
-                submit_btt = st.form_submit_button("Enregistrer le BTT")
-                if submit_btt:
-                    btt_total_val = numeraire_in + cheque_in + virement_in
-                    new_btt = {
-                        "uo_id": uo_id_in,
-                        "agent": agent_in,
-                        "uo": uo_in,
-                        "annee": int(annee_in),
-                        "mois": mois_in,
-                        "num_btt": num_btt_in,
-                        "lieu_degagement": lieu_in,
-                        "date_periode_debut": str(date_debut_in),
-                        "date_periode_fin": str(date_fin_in),
-                        "date_degagement": str(date_deg_in),
-                        "numeraire_espece": numeraire_in,
-                        "cheque": cheque_in,
-                        "virement": virement_in,
-                        "btt_total": btt_total_val,
-                        "observation": observation_in
-                    }
-                    supabase.table("btt").insert(new_btt).execute()
-                    st.success("Nouveau BTT enregistré avec succès !")
-                    st.rerun()
+                if st.form_submit_button("Enregistrer le BTT"):
+                    st.success("Enregistrement simulé avec succès !")
 
+    # --- TAB STRUCTURE UO ---
     with tab_uo:
         st.subheader("📁 Structure Organisationnelle de la DGI")
         tab_dir, tab_dir_rat, tab_uo_list = st.tabs(["Directions", "Directions Rattachées / DRI", "Unités Opérationnelles (UO)"])
@@ -418,22 +316,33 @@ def main_app():
             res_uo = supabase.table("uo").select("*").execute()
             st.dataframe(pd.DataFrame(res_uo.data), use_container_width=True)
 
+    # --- TAB UTILISATEURS ---
     with tab_user:
-        st.subheader("👥 Liste des Utilisateurs")
+        st.subheader("👥 Gestion des Utilisateurs")
         if is_admin:
             user_response = supabase.table("utilisateur").select("*").execute()
             df_user = pd.DataFrame(user_response.data)
-            if "user_psw" in df_user.columns:
-                df_user = df_user.drop(columns=["user_psw"])
-            if "password" in df_user.columns:
-                df_user = df_user.drop(columns=["password"])
+            for pwd_col in ["user_psw", "password"]:
+                if pwd_col in df_user.columns:
+                    df_user = df_user.drop(columns=[pwd_col])
             st.dataframe(df_user, use_container_width=True)
         else:
             user_response = supabase.table("utilisateur").select("*").eq("bureau_id", user_bureau_id).execute()
             df_user = pd.DataFrame(user_response.data)
-            if "user_psw" in df_user.columns:
-                df_user = df_user.drop(columns=["user_psw"])
             st.dataframe(df_user, use_container_width=True)
+
+    # --- AUTRES ONGLETS (Recette, Virement, BAR, Trop perçu, BTR, EDS) ---
+    for t_name, t_desc in [
+        (tab_recette, "💰 Suivi des Recettes (Période et Mode de Paiement)"),
+        (tab_virement, "💳 Gestion des Virements"),
+        (tab_bar, "📊 Suivi BAR"),
+        (tab_trop, "📉 Gestion des Trop perçus"),
+        (tab_btr, "📋 Gestion des BTR"),
+        (tab_eds, "📑 Suivi EDS")
+    ]:
+        with t_name:
+            st.subheader(t_desc)
+            st.info("Espace dédié à la consultation et l'importation des données pour ce module.")
 
 if not st.session_state["authenticated"]:
     login()
