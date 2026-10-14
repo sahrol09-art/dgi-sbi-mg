@@ -8,12 +8,12 @@ from datetime import date
 # Configuration de la page Streamlit
 st.set_page_config(page_title="SBI - DGI Madagascar", page_icon="🏛️", layout="wide")
 
-# CSS personnalisé pour un design 3D et des boutons bien visibles
+# CSS personnalisé pour un design 3D et des éléments interactifs
 st.markdown("""
 <style>
     /* Style 3D pour le titre principal */
     .title-3d {
-        font-size: 36px;
+        font-size: 34px;
         font-weight: 900;
         text-align: center;
         background: linear-gradient(135deg, #1b5e20 0%, #fbc02d 50%, #b71c1c 100%);
@@ -25,7 +25,7 @@ st.markdown("""
         letter-spacing: 2px;
     }
     
-    /* Style pour rendre les boutons et actions bien visibles */
+    /* Style pour les boutons */
     .stButton>button {
         width: 100%;
         border-radius: 8px;
@@ -197,15 +197,35 @@ def main_app():
 
     bureau_name = get_bureau_name(user_bureau_id)
 
-    # --- MENU LATÉRAL (PROFIL CONNECTÉ) ---
-    st.sidebar.title("👤 Profil Connecté")
+    # --- VOLET GAUCHE (MENU PRINCIPAL BASÉ SUR LA FEUILLE STRUCTURE) ---
+    st.sidebar.title("📌 Menu de Navigation")
+    
+    # Filaharana 1 ka hatramin'ny 10 araka ny rafitra ao amin'ny feuille structure
+    menu_choice = st.sidebar.radio(
+        "Sélectionnez une option :",
+        [
+            "1. Profil connecté", 
+            "2. Structure organisationnelle", 
+            "3. Gestion des utilisateurs", 
+            "4. Recette", 
+            "5. Virement", 
+            "6. BAR", 
+            "7. Trop perçu", 
+            "8. BTR", 
+            "9. BTT", 
+            "10. EDS"
+        ]
+    )
+
+    st.sidebar.write("---")
+    st.sidebar.subheader("👤 Infos Session")
     st.sidebar.write(f"**Nom :** {user.get('nom', '')}")
     st.sidebar.write(f"**Bureau / UO :** {bureau_name}")
     st.sidebar.write(f"**Code Bureau :** {user_bureau_id}")
     st.sidebar.write(f"**Fonction :** {user_fonction}")
     
     if is_admin:
-        st.sidebar.success("🔑 Accès Administrateur Activé")
+        st.sidebar.success("🔑 Admin Actif")
 
     if st.sidebar.button("Se déconnecter"):
         st.session_state["authenticated"] = False
@@ -213,7 +233,7 @@ def main_app():
         st.session_state["import_pending"] = None
         st.rerun()
 
-    # --- HEADER AVEC LES LOGOS TAILLE 6x6 (180px) ET LE TITRE 3D ---
+    # --- HEADER AVEC LES LOGOS (TAILLE 180px) ET LE TITRE 3D ---
     col_logo1, col_title, col_logo2 = st.columns([1, 4, 1])
     
     with col_logo1:
@@ -223,7 +243,7 @@ def main_app():
             st.markdown("🇲🇬 **Madagascar**")
             
     with col_title:
-        st.markdown('<div class="title-3d">SERVICE DE LA BRIGADE D\'INSPECTION (SBI)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="title-3d">SERVICE DE LA BRIGADE D\'INSPECTION</div>', unsafe_allow_html=True)
         st.markdown(f"<p style='text-align: center; font-size: 16px; color: #475569;'>Bienvenue, <b>{user.get('nom', '')}</b> — <i>{bureau_name}</i></p>", unsafe_allow_html=True)
         
     with col_logo2:
@@ -234,37 +254,122 @@ def main_app():
 
     st.write("---")
 
-    # --- TABS PRINCIPAUX BASÉS SUR LA FEUILLE STRUCTURE ---
-    tab_btt, tab_uo, tab_user, tab_recette, tab_virement, tab_bar, tab_trop, tab_btr, tab_eds = st.tabs([
-        "📄 BTT", 
-        "📁 Structure Organisationnelle", 
-        "👥 Utilisateurs", 
-        "💰 Recette", 
-        "💳 Virement", 
-        "📊 BAR", 
-        "📉 Trop perçu", 
-        "📋 BTR", 
-        "📑 EDS"
-    ])
+    # --- FITANTANANA IREO SEHATRA (PAGES) ARAKA NY SAFIDY AO AMIN'NY VOLET GAUCHE ---
 
-    # --- TAB BTT ---
-    with tab_btt:
+    # 1. Profil connecté
+    if menu_choice.startswith("1."):
+        st.subheader("👤 Momba an'ilay olona rehetra (Profil Connecté)")
+        st.write(f"* **Anarana:** {user.get('nom', '')}")
+        st.write(f"* **Bureau / UO:** {bureau_name}")
+        st.write(f"* **Code Bureau:** {user_bureau_id}")
+        st.write(f"* **Fonction:** {user_fonction}")
+        st.write(f"* **IM:** {user.get('im', 'Non spécifié')}")
+
+    # 2. Structure organisationnelle
+    elif menu_choice.startswith("2."):
+        st.subheader("📁 Structure Organisationnelle de la DGI")
+        tab_dir, tab_dir_rat, tab_uo_list = st.tabs(["Directions", "Directions Rattachées / DRI", "Unités Opérationnelles (UO)"])
+        with tab_dir:
+            res_dir = supabase.table("direction").select("*").execute()
+            st.dataframe(pd.DataFrame(res_dir.data), use_container_width=True)
+        with tab_dir_rat:
+            res_dir_rat = supabase.table("direction_rattachee").select("*").execute()
+            st.dataframe(pd.DataFrame(res_dir_rat.data), use_container_width=True)
+        with tab_uo_list:
+            res_uo = supabase.table("uo").select("*").execute()
+            st.dataframe(pd.DataFrame(res_uo.data), use_container_width=True)
+
+    # 3. Gestion des utilisateurs
+    elif menu_choice.startswith("3."):
+        st.subheader("👥 Gestion des Utilisateurs")
+        if is_admin:
+            user_response = supabase.table("utilisateur").select("*").execute()
+            df_user = pd.DataFrame(user_response.data)
+            for pwd_col in ["user_psw", "password"]:
+                if pwd_col in df_user.columns:
+                    df_user = df_user.drop(columns=[pwd_col])
+            st.dataframe(df_user, use_container_width=True)
+        else:
+            user_response = supabase.table("utilisateur").select("*").eq("bureau_id", user_bureau_id).execute()
+            df_user = pd.DataFrame(user_response.data)
+            st.dataframe(df_user, use_container_width=True)
+
+    # 4. Recette
+    elif menu_choice.startswith("4."):
+        st.subheader("💰 Suivi des Recettes")
+        st.caption("Période entre 2 dates, mode de paiement")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.date_input("Date début", value=date.today())
+        with col2:
+            st.date_input("Date fin", value=date.today())
+        st.selectbox("Mode de paiement", ["Tous", "Espèce", "Chèque", "Virement"])
+        st.info("Espace de consultation et d'importation des recettes.")
+
+    # 5. Virement
+    elif menu_choice.startswith("5."):
+        st.subheader("💳 Gestion des Virements")
+        st.caption("Période entre 2 dates (importation de donnée)")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.date_input("Date début Virement", value=date.today())
+        with col2:
+            st.date_input("Date fin Virement", value=date.today())
+        st.info("Espace dédié aux virements.")
+
+    # 6. BAR
+    elif menu_choice.startswith("6."):
+        st.subheader("📊 Suivi BAR")
+        st.caption("Période entre 2 dates (importation de donnée)")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.date_input("Date début BAR", value=date.today())
+        with col2:
+            st.date_input("Date fin BAR", value=date.today())
+        st.info("Espace dédié au BAR.")
+
+    # 7. Trop perçu
+    elif menu_choice.startswith("7."):
+        st.subheader("📉 Gestion des Trop perçus")
+        st.caption("Période entre 2 dates (importation de donnée)")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.date_input("Date début Trop perçu", value=date.today())
+        with col2:
+            st.date_input("Date fin Trop perçu", value=date.today())
+        st.info("Espace dédié aux trop perçus.")
+
+    # 8. BTR
+    elif menu_choice.startswith("8."):
+        st.subheader("📋 Gestion des BTR")
+        st.caption("Période entre 2 dates")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.date_input("Date début BTR", value=date.today())
+        with col2:
+            st.date_input("Date fin BTR", value=date.today())
+        st.info("Espace dédié aux BTR.")
+
+    # 9. BTT
+    elif menu_choice.startswith("9."):
         st.subheader("📄 Gestion des Bordereaux de Transfert (BTT)")
+        st.caption("Période entre 2 dates: BTT Espèce et Chèque (mitokana), BTT Virement (mitokana)")
+        
         sub_tab1, sub_tab2, sub_tab3 = st.tabs(["📊 Consulter les Données", "📤 Importer un fichier Excel", "✍️ Saisie Manuelle"])
 
         with sub_tab1:
             if is_admin:
-                st.write("### Liste globale de tous les BTT (Vue Administrateur)")
+                st.write("### Liste globale de tous les BTT")
                 btt_res = supabase.table("btt").select("*").order("id", desc=True).execute()
             else:
-                st.write(f"### Liste des BTT enregistrés pour : **{bureau_name}** ({user_bureau_id})")
+                st.write(f"### Liste des BTT pour : **{bureau_name}**")
                 btt_res = supabase.table("btt").select("*").eq("uo_id", user_bureau_id).order("id", desc=True).execute()
 
             df_btt = pd.DataFrame(btt_res.data)
             if not df_btt.empty:
                 st.dataframe(df_btt, use_container_width=True)
             else:
-                st.info("Aucune donnée BTT disponible pour le moment.")
+                st.info("Aucune donnée BTT disponible.")
 
         with sub_tab2:
             st.write("### 📤 Importation de fichier Excel (BTT)")
@@ -272,7 +377,6 @@ def main_app():
             if uploaded_file is not None:
                 try:
                     df_upload = pd.read_excel(uploaded_file, sheet_name="BTT")
-                    df_upload.columns = df_upload.columns.astype(str).str.strip()
                     st.success("Fichier chargé avec succès.")
                     st.dataframe(df_upload.head(), use_container_width=True)
                 except Exception as e:
@@ -302,47 +406,16 @@ def main_app():
                 if st.form_submit_button("Enregistrer le BTT"):
                     st.success("Enregistrement simulé avec succès !")
 
-    # --- TAB STRUCTURE UO ---
-    with tab_uo:
-        st.subheader("📁 Structure Organisationnelle de la DGI")
-        tab_dir, tab_dir_rat, tab_uo_list = st.tabs(["Directions", "Directions Rattachées / DRI", "Unités Opérationnelles (UO)"])
-        with tab_dir:
-            res_dir = supabase.table("direction").select("*").execute()
-            st.dataframe(pd.DataFrame(res_dir.data), use_container_width=True)
-        with tab_dir_rat:
-            res_dir_rat = supabase.table("direction_rattachee").select("*").execute()
-            st.dataframe(pd.DataFrame(res_dir_rat.data), use_container_width=True)
-        with tab_uo_list:
-            res_uo = supabase.table("uo").select("*").execute()
-            st.dataframe(pd.DataFrame(res_uo.data), use_container_width=True)
-
-    # --- TAB UTILISATEURS ---
-    with tab_user:
-        st.subheader("👥 Gestion des Utilisateurs")
-        if is_admin:
-            user_response = supabase.table("utilisateur").select("*").execute()
-            df_user = pd.DataFrame(user_response.data)
-            for pwd_col in ["user_psw", "password"]:
-                if pwd_col in df_user.columns:
-                    df_user = df_user.drop(columns=[pwd_col])
-            st.dataframe(df_user, use_container_width=True)
-        else:
-            user_response = supabase.table("utilisateur").select("*").eq("bureau_id", user_bureau_id).execute()
-            df_user = pd.DataFrame(user_response.data)
-            st.dataframe(df_user, use_container_width=True)
-
-    # --- AUTRES ONGLETS (Recette, Virement, BAR, Trop perçu, BTR, EDS) ---
-    for t_name, t_desc in [
-        (tab_recette, "💰 Suivi des Recettes (Période et Mode de Paiement)"),
-        (tab_virement, "💳 Gestion des Virements"),
-        (tab_bar, "📊 Suivi BAR"),
-        (tab_trop, "📉 Gestion des Trop perçus"),
-        (tab_btr, "📋 Gestion des BTR"),
-        (tab_eds, "📑 Suivi EDS")
-    ]:
-        with t_name:
-            st.subheader(t_desc)
-            st.info("Espace dédié à la consultation et l'importation des données pour ce module.")
+    # 10. EDS
+    elif menu_choice.startswith("10."):
+        st.subheader("📑 Suivi EDS")
+        st.caption("Période entre 2 dates")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.date_input("Date début EDS", value=date.today())
+        with col2:
+            st.date_input("Date fin EDS", value=date.today())
+        st.info("Espace dédié aux EDS.")
 
 if not st.session_state["authenticated"]:
     login()
