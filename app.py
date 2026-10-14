@@ -6,7 +6,42 @@ from supabase import create_client, Client
 from datetime import date
 
 # Configuration de la page Streamlit
-st.set_page_config(page_title="Projet SBI - DGI Madagascar", page_icon="🔐", layout="wide")
+st.set_page_config(page_title="PROJET SERVICE DE LA BRIGADE D'INSPECTION (SBI)", page_icon="🏛️", layout="wide")
+
+# CSS personnalisé pour un design 3D, des boutons stylés et des cartes interactives
+st.markdown("""
+<style>
+    /* Style 3D pour le titre principal */
+    .title-3d {
+        font-size: 38px;
+        font-weight: 900;
+        text-align: center;
+        background: linear-gradient(135deg, #1b5e20 0%, #fbc02d 50%, #b71c1c 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-shadow: 3px 3px 6px rgba(0,0,0,0.2);
+        margin-bottom: 20px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+    }
+    
+    /* Style interactif pour rendre les éléments cliquables évidents */
+    .stButton>button {
+        width: 100%;
+        border-radius: 8px;
+        font-weight: bold;
+        background-color: #f0f2f6;
+        border: 2px solid #d1d5db;
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover {
+        background-color: #e2e8f0;
+        border-color: #1b5e20;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        transform: translateY(-2px);
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Connexion à Supabase
 @st.cache_resource
@@ -26,40 +61,27 @@ if "import_pending" not in st.session_state:
     st.session_state["import_pending"] = None
 
 def get_bureau_name(bureau_id: str) -> str:
-    """Recherche intelligente et mode débogage"""
+    """Recherche intelligente basée sur le nombre de tirets (-) dans le Bureau_ID"""
     if not bureau_id:
         return "Non spécifié"
     
     clean_id = str(bureau_id).strip()
     hyphen_count = clean_id.count("-")
     
-    # ----------------------------------------------------
-    # FIZAHANA (DEBOGAGE) EO AMIN'NY ÉCRAN STREMLIT
-    # ----------------------------------------------------
-    st.sidebar.write(f"🔍 **[DEBUG]** ID: `{clean_id}` | Tirets (-): **{hyphen_count}**")
-
     try:
-        # 1) Nombre de "-" = 0 ➔ Table Ministère
         if hyphen_count == 0:
-            st.sidebar.write("👉 Tadiavina ao amin'ny: **ministere**")
             res = supabase.table("ministere").select("ministere").eq("ministere_id", clean_id).execute()
             if res.data and len(res.data) > 0:
                 val = res.data[0].get("ministere")
                 if val:
                     return str(val).strip()
-        
-        # 2) Nombre de "-" = 1 ➔ Table Direction
         elif hyphen_count == 1:
-            st.sidebar.write("👉 Tadiavina ao amin'ny: **direction**")
             res = supabase.table("direction").select("direction").eq("direction_id", clean_id).execute()
             if res.data and len(res.data) > 0:
                 val = res.data[0].get("direction")
                 if val:
                     return str(val).strip()
-        
-        # 3) Nombre de "-" = 2 ➔ Table Direction Rattachée
         elif hyphen_count == 2:
-            st.sidebar.write("👉 Tadiavina ao amin'ny: **direction_rattachee**")
             for id_col in ["direction_rattache_id", "id_direction_rattachee", "Direction_ratache_ID"]:
                 for name_col in ["direction_ratache", "direction_rattachee"]:
                     try:
@@ -70,10 +92,7 @@ def get_bureau_name(bureau_id: str) -> str:
                                 return str(val).strip()
                     except Exception:
                         continue
-        
-        # 4) Nombre de "-" >= 3 ➔ Table UO
         elif hyphen_count >= 3:
-            st.sidebar.write("👉 Tadiavina ao amin'ny: **uo**")
             for id_col in ["ID_UO", "uo_id", "id_uo"]:
                 for name_col in ["Libelle_UO", "uo", "libelle_uo"]:
                     try:
@@ -84,17 +103,14 @@ def get_bureau_name(bureau_id: str) -> str:
                                 return str(val).strip()
                     except Exception:
                         continue
-    except Exception as e:
-        st.sidebar.error(f"Erreur DB: {e}")
+    except Exception:
         pass
         
     return clean_id
-    
+
 def clean_record_for_json(record):
-    """Nettoie les valeurs NaN, float invalides et adapte les types pour Supabase"""
     cleaned = {}
     int_cols = ["annee", "num_btt"]
-    
     for k, v in record.items():
         if pd.isna(v) or v is None:
             cleaned[k] = None
@@ -119,13 +135,10 @@ def clean_record_for_json(record):
             cleaned[k] = float(v)
         else:
             cleaned[k] = str(v).strip()
-            
     return cleaned
 
 def login():
-    st.title("🔐 Projet SBI - Page de Connexion")
-    st.subheader("Veuillez saisir votre Identifiant (Login ou IM) et votre mot de passe")
-
+    st.title("🔐 Page de Connexion")
     with st.form("login_form"):
         login_input = st.text_input("Identifiant (Login ou IM) :", value="277485")
         password_input = st.text_input("Mot de passe :", type="password")
@@ -134,7 +147,6 @@ def login():
         if submit_button:
             clean_input = login_input.strip()
             data = []
-            
             resp_login = supabase.table("utilisateur").select("*").eq("user_login", clean_input).execute()
             if resp_login.data and len(resp_login.data) > 0:
                 data = resp_login.data
@@ -178,7 +190,6 @@ def execute_btt_insert(records_to_insert, user_bureau, action="insert", existing
 
 def main_app():
     user = st.session_state["user_info"]
-    
     user_bureau_id = str(user.get('bureau_id') or user.get('id_uo') or '').strip()
     user_fonction = str(user.get('fonction', '')).strip()
     is_admin = (user_fonction.lower() == 'admin')
@@ -201,8 +212,26 @@ def main_app():
         st.session_state["import_pending"] = None
         st.rerun()
 
-    st.title("📊 Projet SBI - Dashboard de Gestion")
-    st.write(f"Bienvenue, **{user.get('nom', '')}** ({bureau_name}) !")
+    # --- HEADER AVEC LES LOGOS ET LE TITRE 3D ---
+    col_logo1, col_title, col_logo2 = st.columns([1, 4, 1])
+    
+    with col_logo1:
+        try:
+            st.image("republique.jpg", width=100)
+        except Exception:
+            st.write("🇲🇬")
+            
+    with col_title:
+        st.markdown('<div class="title-3d">PROJET SERVICE DE LA BRIGADE D\'INSPECTION (SBI)</div>', unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align: center; font-size: 16px; color: #555;'>Bienvenue, <b>{user.get('nom', '')}</b> ({bureau_name})</p>", unsafe_allow_html=True)
+        
+    with col_logo2:
+        try:
+            st.image("dgi.jpg", width=100)
+        except Exception:
+            st.write("🏛️")
+
+    st.write("---")
 
     tab_btt, tab_uo, tab_user = st.tabs(["📄 Données BTT", "📁 Structure Organisationnelle", "👥 Gestion des Utilisateurs"])
 
@@ -255,21 +284,19 @@ def main_app():
                         "BTT_Cumul": "btt_cumul",
                         "OBSERVATION": "observation"
                     }
-                    
                     df_upload = df_upload.rename(columns=col_mapping)
 
                     if "uo_id" not in df_upload.columns:
                         st.error("La colonne 'UO_ID' est introuvable dans le fichier Excel.")
                     else:
                         df_upload["uo_id"] = df_upload["uo_id"].astype(str).str.strip()
-
                         if is_admin:
                             df_user_data = df_upload.copy()
                         else:
                             df_user_data = df_upload[df_upload["uo_id"] == user_bureau_id].copy()
 
                         if df_user_data.empty:
-                            st.warning(f"⚠️ Aucune donnée correspondant au bureau {bureau_name} ({user_bureau_id}) n'a été trouvée dans ce fichier.")
+                            st.warning(f"⚠️ Aucune donnée correspondant au bureau {bureau_name} n'a été trouvée dans ce fichier.")
                         else:
                             st.success(f"{len(df_user_data)} ligne(s) trouvée(s) pour l'importation.")
                             st.dataframe(df_user_data.head(), use_container_width=True)
@@ -296,7 +323,6 @@ def main_app():
                                             .eq("annee", int(annee_val))\
                                             .eq("mois", str(mois_val))\
                                             .execute()
-                                        
                                         if check_res.data and len(check_res.data) > 0:
                                             conflicts_found = True
                                             crit = {"annee": int(annee_val), "mois": str(mois_val)}
@@ -311,7 +337,6 @@ def main_app():
                                     st.rerun()
                                 else:
                                     execute_btt_insert(records, user_bureau_id, action="insert")
-
                 except Exception as e:
                     st.error(f"Erreur lors de la lecture du fichier : {e}")
 
@@ -322,46 +347,33 @@ def main_app():
                 for c in pending["existing_criteria"]:
                     st.write(f"- **Année :** {c['annee']} | **Mois :** {c['mois']}")
 
-                st.write("### Choisissez une action :")
                 col_act1, col_act2 = st.columns(2)
-
                 with col_act1:
                     if st.button("🔄 Mettre à jour (Remplacer)"):
-                        execute_btt_insert(
-                            pending["records"], 
-                            user_bureau_id, 
-                            action="update", 
-                            existing_criteria=pending["existing_criteria"]
-                        )
-
+                        execute_btt_insert(pending["records"], user_bureau_id, action="update", existing_criteria=pending["existing_criteria"])
                 with col_act2:
                     if st.button("🛡️ Conserver les données existantes (Annuler)"):
                         st.session_state["import_pending"] = None
-                        st.info("Importation annulée. Les données existantes sont conservées.")
+                        st.info("Importation annulée.")
                         st.rerun()
 
         with sub_tab3:
             st.write("### ✍️ Formulaire de saisie d'un nouveau BTT")
             with st.form("form_btt_saisie"):
                 col1, col2, col3 = st.columns(3)
-                
                 with col1:
                     uo_id_in = st.text_input("ID Bureau / UO", value=user_bureau_id, disabled=not is_admin)
                     agent_in = st.text_input("Nom de l'Agent", value=user.get('nom', ''))
-                    
                     current_bureau_label = get_bureau_name(uo_id_in)
                     uo_in = st.text_input("Libellé du Bureau / UO", value=current_bureau_label)
-                    
                     annee_in = st.number_input("Année", value=2026, step=1)
                     mois_in = st.selectbox("Mois", ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"])
-
                 with col2:
                     num_btt_in = st.text_input("N° BTT")
                     lieu_in = st.text_input("Lieu de dégagement")
                     date_debut_in = st.date_input("Date début période", value=date.today())
                     date_fin_in = st.date_input("Date fin période", value=date.today())
                     date_deg_in = st.date_input("Date de dégagement", value=date.today())
-
                 with col3:
                     numeraire_in = st.number_input("Numéraire / Espèce", value=0.0)
                     cheque_in = st.number_input("Chèque", value=0.0)
@@ -369,7 +381,6 @@ def main_app():
                     observation_in = st.text_area("Observation")
 
                 submit_btt = st.form_submit_button("Enregistrer le BTT")
-
                 if submit_btt:
                     btt_total_val = numeraire_in + cheque_in + virement_in
                     new_btt = {
@@ -393,25 +404,19 @@ def main_app():
                     st.success("Nouveau BTT enregistré avec succès !")
                     st.rerun()
 
-    # --- TAB STRUCTURE UO / DIRECTION ---
     with tab_uo:
         st.subheader("📁 Structure Organisationnelle de la DGI")
-        
         tab_dir, tab_dir_rat, tab_uo_list = st.tabs(["Directions", "Directions Rattachées / DRI", "Unités Opérationnelles (UO)"])
-        
         with tab_dir:
             res_dir = supabase.table("direction").select("*").execute()
             st.dataframe(pd.DataFrame(res_dir.data), use_container_width=True)
-            
         with tab_dir_rat:
             res_dir_rat = supabase.table("direction_rattachee").select("*").execute()
             st.dataframe(pd.DataFrame(res_dir_rat.data), use_container_width=True)
-            
         with tab_uo_list:
             res_uo = supabase.table("uo").select("*").execute()
             st.dataframe(pd.DataFrame(res_uo.data), use_container_width=True)
 
-    # --- TAB UTILISATEUR ---
     with tab_user:
         st.subheader("👥 Liste des Utilisateurs")
         if is_admin:
