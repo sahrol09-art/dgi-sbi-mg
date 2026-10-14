@@ -8,6 +8,12 @@ import qrcode
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
+# Import ho an'ny PDF (ReportLab)
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+
 # Configuration de la page Streamlit
 st.set_page_config(page_title="SBI - DGI Madagascar", page_icon="🏛️", layout="wide")
 
@@ -60,6 +66,8 @@ if "user_info" not in st.session_state:
     st.session_state["user_info"] = None
 if "import_pending" not in st.session_state:
     st.session_state["import_pending"] = None
+if "auth_mode" not in st.session_state:
+    st.session_state["auth_mode"] = "login" # "login", "register", "forgot"
 
 def get_bureau_name(bureau_id: str) -> str:
     if not bureau_id:
@@ -105,43 +113,12 @@ def get_bureau_name(bureau_id: str) -> str:
         pass
     return clean_id
 
-def clean_record_for_json(record):
-    cleaned = {}
-    int_cols = ["annee", "num_btt"]
-    for k, v in record.items():
-        if pd.isna(v) or v is None:
-            cleaned[k] = None
-        elif k in int_cols:
-            try:
-                cleaned[k] = int(float(v))
-            except (ValueError, TypeError):
-                cleaned[k] = None
-        elif k == "mois":
-            if isinstance(v, (float, int, np.number)):
-                try:
-                    cleaned[k] = str(int(float(v)))
-                except (ValueError, TypeError):
-                    cleaned[k] = str(v)
-            else:
-                cleaned[k] = str(v).strip()
-        elif isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-            cleaned[k] = None
-        elif isinstance(v, (int, np.integer)):
-            cleaned[k] = int(v)
-        elif isinstance(v, (float, np.floating)):
-            cleaned[k] = float(v)
-        else:
-            cleaned[k] = str(v).strip()
-    return cleaned
-
 def generate_printable_qr_code(url: str):
-    """Mamorona sary Code QR miaraka amin'ny adiresy feno eo ambaniny mba hatao printy"""
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
     qr.add_data(url)
     qr.make(fit=True)
     qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
     
-    # Manao taratasy fotsy lehibe kokoa hametrahana ilay adiresy eo ambany
     qr_width, qr_height = qr_img.size
     padding = 40
     text_height = 50
@@ -150,7 +127,6 @@ def generate_printable_qr_code(url: str):
     new_img = Image.new('RGB', (qr_width + (padding * 2), total_height), 'white')
     new_img.paste(qr_img, (padding, padding))
     
-    # Manatsika ilay URL eo ambany
     draw = ImageDraw.Draw(new_img)
     try:
         font = ImageFont.load_default()
@@ -163,39 +139,200 @@ def generate_printable_qr_code(url: str):
     new_img.save(buffered, format="PNG")
     return buffered.getvalue()
 
-def login():
-    st.title("🔐 Page de Connexion")
-    with st.form("login_form"):
-        login_input = st.text_input("Identifiant (Login ou IM) :", value="277485")
-        password_input = st.text_input("Mot de passe :", type="password")
-        submit_button = st.form_submit_button("Se connecter")
+def generate_pdf_qr_code(url: str) -> bytes:
+    """Mamorona PDF misy ny lohateny SERVICE DE LA BRIGADE D'INSPECTION sy ny Code QR"""
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(url)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
+    
+    img_buffer = BytesIO()
+    qr_img.save(img_buffer, format="PNG")
+    img_buffer.seek(0)
+    
+    pdf_buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        pdf_buffer,
+        pagesize=A4,
+        rightMargin=50,
+        leftMargin=50,
+        topMargin=50,
+        bottomMargin=50
+    )
+    
+    styles = getSampleStyleSheet()
+    
+    # Endrika mitovitovy amin'ny Streamlit 3D title fa natao ho an'ny PDF (Majuscule)
+    title_style = ParagraphStyle(
+        'TitleStyle',
+        parent=styles['Heading1'],
+        fontName='Helvetica-Bold',
+        fontSize=22,
+        alignment=1, # Afovoany
+        textColor=colors.HexColor('#1b5e20'), # Maitso tahaka ny lohateny
+        spaceAfter=8
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'SubTitleStyle',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=12,
+        alignment=1,
+        textColor=colors.HexColor('#b71c1c'), # Mena kely ho fampiarahana amin'ny gradient
+        spaceAfter=25
+    )
+    
+    desc_style = ParagraphStyle(
+        'DescStyle',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=10,
+        alignment=1,
+        textColor=colors.HexColor('#475569'),
+        spaceAfter=15
+    )
+    
+    link_style = ParagraphStyle(
+        'LinkStyle',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=11,
+        alignment=1,
+        textColor=colors.HexColor('#1d4ed8'),
+        spaceBefore=15
+    )
+    
+    elements = []
+    
+    # Lohateny natao MAJUSCULE tsara araka ny nangatahina
+    elements.append(Paragraph("SERVICE DE LA BRIGADE D'INSPECTION", title_style))
+    elements.append(Paragraph("DGI MADAGASCAR", subtitle_style))
+    elements.append(Spacer(1, 10))
+    
+    # Sary Code QR
+    elements.append(RLImage(img_buffer, width=200, height=200))
+    elements.append(Spacer(1, 15))
+    
+    # Fanazavana sy ilay adiresy URL azo kopiana mora foana ao amin'ny Windows
+    elements.append(Paragraph("Scannez ce code QR ou copiez le lien ci-dessous :", desc_style))
+    elements.append(Paragraph(f'<a href="{url}" color="#1d4ed8"><b>{url}</b></a>', link_style))
+    
+    doc.build(elements)
+    pdf_data = pdf_buffer.getvalue()
+    pdf_buffer.close()
+    return pdf_data
 
-        if submit_button:
-            clean_input = login_input.strip()
-            data = []
-            resp_login = supabase.table("utilisateur").select("*").eq("user_login", clean_input).execute()
-            if resp_login.data and len(resp_login.data) > 0:
-                data = resp_login.data
-            else:
-                try:
-                    im_val = int(clean_input)
-                    resp_im = supabase.table("utilisateur").select("*").eq("im", im_val).execute()
-                    if resp_im.data and len(resp_im.data) > 0:
-                        data = resp_im.data
-                except ValueError:
-                    pass
+def login_page():
+    st.title("🔐 Authentification - SBI DGI Madagascar")
+    
+    col_nav1, col_nav2, col_nav3 = st.columns(3)
+    with col_nav1:
+        if st.button("Se connecter"):
+            st.session_state["auth_mode"] = "login"
+            st.rerun()
+    with col_nav2:
+        if st.button("Créer un compte"):
+            st.session_state["auth_mode"] = "register"
+            st.rerun()
+    with col_nav3:
+        if st.button("Mot de passe oublié ?"):
+            st.session_state["auth_mode"] = "forgot"
+            st.rerun()
 
-            if data and len(data) > 0:
-                user = data[0]
-                if user.get("user_psw") == password_input or user.get("password") == password_input:
-                    st.session_state["authenticated"] = True
-                    st.session_state["user_info"] = user
-                    st.success("Connexion réussie !")
-                    st.rerun()
+    st.write("---")
+
+    mode = st.session_state["auth_mode"]
+
+    if mode == "login":
+        st.subheader("Connexion à l'application")
+        with st.form("login_form"):
+            login_input = st.text_input("Identifiant (Login ou IM) :")
+            password_input = st.text_input("Mot de passe :", type="password")
+            submit_button = st.form_submit_button("Se connecter")
+
+            if submit_button:
+                clean_input = login_input.strip()
+                data = []
+                resp_login = supabase.table("utilisateur").select("*").eq("user_login", clean_input).execute()
+                if resp_login.data and len(resp_login.data) > 0:
+                    data = resp_login.data
                 else:
-                    st.error("Mot de passe incorrect !")
-            else:
-                st.error("Identifiant introuvable dans la base de données !")
+                    try:
+                        im_val = int(clean_input)
+                        resp_im = supabase.table("utilisateur").select("*").eq("im", im_val).execute()
+                        if resp_im.data and len(resp_im.data) > 0:
+                            data = resp_im.data
+                    except ValueError:
+                        pass
+
+                if data and len(data) > 0:
+                    user = data[0]
+                    if user.get("user_psw") == password_input or user.get("password") == password_input:
+                        st.session_state["authenticated"] = True
+                        st.session_state["user_info"] = user
+                        st.success("Connexion réussie !")
+                        st.rerun()
+                    else:
+                        st.error("Mot de passe incorrect !")
+                else:
+                    st.error("Identifiant introuvable dans la base de données ou compte non validé !")
+
+    elif mode == "register":
+        st.subheader("📝 Demande de création de compte")
+        st.caption("Votre demande sera transmise à l'administrateur pour validation.")
+        with st.form("register_form"):
+            reg_login = st.text_input("Nom d'utilisateur (Login) :")
+            reg_im = st.number_input("Numéro Matricule (IM) :", step=1)
+            reg_nom = st.text_input("Nom et Prénoms :")
+            reg_bureau = st.text_input("Code Bureau / UO (ex: 1001-01-001) :")
+            reg_fonction = st.selectbox("Fonction :", ["Agent", "Contrôleur", "Chef de Service", "Admin"])
+            reg_pwd = st.text_input("Mot de passe souhaité :", type="password")
+            reg_submit = st.form_submit_button("Soumettre la demande")
+
+            if reg_submit:
+                if not reg_login or not reg_nom or not reg_bureau or not reg_pwd:
+                    st.error("Veuillez remplir tous les champs obligatoires.")
+                else:
+                    new_request = {
+                        "user_login": reg_login.strip(),
+                        "im": int(reg_im),
+                        "nom": reg_nom.strip(),
+                        "bureau_id": reg_bureau.strip(),
+                        "fonction": reg_fonction.strip(),
+                        "user_psw": reg_pwd.strip()
+                    }
+                    try:
+                        supabase.table("utilisateur_attente").insert(new_request).execute()
+                        st.success("✅ Demande envoyée avec succès ! Veuillez patienter la validation par l'administrateur.")
+                    except Exception as e:
+                        st.error(f"Erreur lors de l'envoi de la demande : {e}")
+
+    elif mode == "forgot":
+        st.subheader("🔑 Récupération autonome du mot de passe")
+        st.caption("Veuillez entrer votre IM et votre date de naissance enregistrée pour réinitialiser votre mot de passe.")
+        with st.form("forgot_form"):
+            f_im = st.number_input("Votre Numéro Matricule (IM) :", step=1)
+            f_dob = st.text_input("Votre Date de naissance (Format YYYY-MM-DD ou JJ/MM/AAAA) :")
+            f_new_pwd = st.text_input("Nouveau mot de passe :", type="password")
+            f_submit = st.form_submit_button("Réinitialiser le mot de passe")
+
+            if f_submit:
+                try:
+                    resp = supabase.table("utilisateur").select("*").eq("im", int(f_im)).execute()
+                    if resp.data and len(resp.data) > 0:
+                        user_rec = resp.data[0]
+                        db_dob = str(user_rec.get("date_naissance", "")).strip()
+                        if f_dob.strip() in db_dob:
+                            user_id = user_rec.get("id") or user_rec.get("user_login")
+                            supabase.table("utilisateur").update({"user_psw": f_new_pwd.strip()}).eq("im", int(f_im)).execute()
+                            st.success("✅ Votre mot de passe a été réinitialisé avec succès ! Vous pouvez vous connecter.")
+                        else:
+                            st.error("❌ La date de naissance ne correspond pas à nos enregistrements.")
+                    else:
+                        st.error("❌ Aucun utilisateur trouvé avec cet IM.")
+                except Exception as e:
+                    st.error(f"Erreur : {e}")
 
 def main_app():
     user = st.session_state["user_info"]
@@ -208,27 +345,29 @@ def main_app():
     # --- VOLET GAUCHE (MENU STRUCTURÉ PROPRE - CODE QR VOALOHANY) ---
     st.sidebar.title("📌 Navigation")
     
-    menu_choice = st.sidebar.radio(
-        "Sélectionnez un module :",
-        [
-            "📱 Code QR", 
-            "👤 Profil connecté", 
-            "📁 Structure organisationnelle", 
-            "👥 Gestion des utilisateurs", 
-            "💰 Recette", 
-            "💳 Virement", 
-            "📊 BAR", 
-            "📉 Trop perçu", 
-            "📋 BTR", 
-            "📄 BTT", 
-            "📑 EDS", 
-            "⚖️ BOD",
-            "🔍 Contrôle 1er niveau - Rapport",
-            "📈 Contrôle 1er niveau - Suivi et recommandation",
-            "🔎 Contrôle 2ème niveau - Rapport",
-            "📉 Contrôle 2ème niveau - Suivi et recommandation"
-        ]
-    )
+    menu_options = [
+        "📱 Code QR", 
+        "👤 Profil connecté", 
+        "📁 Structure organisationnelle", 
+        "👥 Gestion des utilisateurs", 
+        "💰 Recette", 
+        "💳 Virement", 
+        "📊 BAR", 
+        "📉 Trop perçu", 
+        "📋 BTR", 
+        "📄 BTT", 
+        "📑 EDS", 
+        "⚖️ BOD",
+        "🔍 Contrôle 1er niveau - Rapport",
+        "📈 Contrôle 1er niveau - Suivi et recommandation",
+        "🔎 Contrôle 2ème niveau - Rapport",
+        "📉 Contrôle 2ème niveau - Suivi et recommandation"
+    ]
+    
+    if is_admin:
+        menu_options.append("🔑 Valider les Inscriptions")
+
+    menu_choice = st.sidebar.radio("Sélectionnez un module :", menu_options)
 
     st.sidebar.write("---")
     st.sidebar.subheader("👤 Session Info")
@@ -271,19 +410,30 @@ def main_app():
 
     if "Code QR" in menu_choice:
         st.subheader("📱 Code QR de l'Application")
-        st.write("Scannez ce code QR avec un téléphone mobile ou téléchargez la version imprimable contenant l'adresse complète.")
+        st.write("Scannez ce code QR avec un téléphone mobile ou téléchargez la version PDF / PNG imprimable contenant l'adresse complète.")
         app_url = "https://dgi-sbi-mg-z9ussubgf28w7rderjjchy.streamlit.app"
         
         printable_qr_bytes = generate_printable_qr_code(app_url)
+        pdf_bytes = generate_pdf_qr_code(app_url)
         
         st.image(printable_qr_bytes, width=320)
         
-        st.download_button(
-            label="📥 Télécharger le Code QR pour Impression (PNG)",
-            data=printable_qr_bytes,
-            file_name="QR_Code_Printable_SBI.png",
-            mime="image/png"
-        )
+        col_dl1, col_dl2 = st.columns(2)
+        with col_dl1:
+            st.download_button(
+                label="📥 Télécharger le Code QR (PDF)",
+                data=pdf_bytes,
+                file_name="QR_Code_SBI_DGI.pdf",
+                mime="application/pdf"
+            )
+        with col_dl2:
+            st.download_button(
+                label="📥 Télécharger le Code QR (PNG)",
+                data=printable_qr_bytes,
+                file_name="QR_Code_Printable_SBI.png",
+                mime="image/png"
+            )
+            
         st.code(app_url, language="text")
 
     elif menu_choice.startswith("👤"):
@@ -320,6 +470,36 @@ def main_app():
             user_response = supabase.table("utilisateur").select("*").eq("bureau_id", user_bureau_id).execute()
             df_user = pd.DataFrame(user_response.data)
             st.dataframe(df_user, use_container_width=True)
+
+    elif is_admin and "Valider les Inscriptions" in menu_choice:
+        st.subheader("🔑 Validation des demandes de création de compte")
+        try:
+            pending_resp = supabase.table("utilisateur_attente").select("*").execute()
+            pending_data = pending_resp.data
+            if pending_data and len(pending_data) > 0:
+                df_pending = pd.DataFrame(pending_data)
+                st.dataframe(df_pending, use_container_width=True)
+                
+                selected_login_to_validate = st.selectbox("Sélectionner le Login à valider :", [row["user_login"] for row in pending_data])
+                if st.button("✅ Valider ce compte"):
+                    target_row = next((r for r in pending_data if r["user_login"] == selected_login_to_validate), None)
+                    if target_row:
+                        ins_data = {
+                            "user_login": target_row["user_login"],
+                            "im": target_row["im"],
+                            "nom": target_row["nom"],
+                            "bureau_id": target_row["bureau_id"],
+                            "fonction": target_row["fonction"],
+                            "user_psw": target_row["user_psw"]
+                        }
+                        supabase.table("utilisateur").insert(ins_data).execute()
+                        supabase.table("utilisateur_attente").delete().eq("user_login", selected_login_to_validate).execute()
+                        st.success(f"Compte {selected_login_to_validate} validé avec succès !")
+                        st.rerun()
+            else:
+                st.info("Aucune demande de compte en attente.")
+        except Exception as e:
+            st.error(f"Erreur : {e}")
 
     elif "Recette" in menu_choice:
         st.subheader("💰 Suivi des Recettes")
@@ -451,6 +631,6 @@ def main_app():
         st.file_uploader("Importer le rapport ou document de suivi :", type=["pdf", "docx", "doc"])
 
 if not st.session_state["authenticated"]:
-    login()
+    login_page()
 else:
     main_app()
