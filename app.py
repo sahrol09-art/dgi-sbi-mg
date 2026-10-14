@@ -26,16 +26,22 @@ if "import_pending" not in st.session_state:
     st.session_state["import_pending"] = None
 
 def get_bureau_name(bureau_id: str) -> str:
-    """Recherche intelligente basée sur le nombre de tirets (-) dans le Bureau_ID"""
+    """Recherche intelligente et mode débogage"""
     if not bureau_id:
         return "Non spécifié"
     
     clean_id = str(bureau_id).strip()
     hyphen_count = clean_id.count("-")
     
+    # ----------------------------------------------------
+    # FIZAHANA (DEBOGAGE) EO AMIN'NY ÉCRAN STREMLIT
+    # ----------------------------------------------------
+    st.sidebar.write(f"🔍 **[DEBUG]** ID: `{clean_id}` | Tirets (-): **{hyphen_count}**")
+
     try:
         # 1) Nombre de "-" = 0 ➔ Table Ministère
         if hyphen_count == 0:
+            st.sidebar.write("👉 Tadiavina ao amin'ny: **ministere**")
             res = supabase.table("ministere").select("ministere").eq("ministere_id", clean_id).execute()
             if res.data and len(res.data) > 0:
                 val = res.data[0].get("ministere")
@@ -44,6 +50,7 @@ def get_bureau_name(bureau_id: str) -> str:
         
         # 2) Nombre de "-" = 1 ➔ Table Direction
         elif hyphen_count == 1:
+            st.sidebar.write("👉 Tadiavina ao amin'ny: **direction**")
             res = supabase.table("direction").select("direction").eq("direction_id", clean_id).execute()
             if res.data and len(res.data) > 0:
                 val = res.data[0].get("direction")
@@ -52,6 +59,7 @@ def get_bureau_name(bureau_id: str) -> str:
         
         # 3) Nombre de "-" = 2 ➔ Table Direction Rattachée
         elif hyphen_count == 2:
+            st.sidebar.write("👉 Tadiavina ao amin'ny: **direction_rattachee**")
             for id_col in ["direction_rattache_id", "id_direction_rattachee", "Direction_ratache_ID"]:
                 for name_col in ["direction_ratache", "direction_rattachee"]:
                     try:
@@ -65,6 +73,7 @@ def get_bureau_name(bureau_id: str) -> str:
         
         # 4) Nombre de "-" >= 3 ➔ Table UO
         elif hyphen_count >= 3:
+            st.sidebar.write("👉 Tadiavina ao amin'ny: **uo**")
             for id_col in ["ID_UO", "uo_id", "id_uo"]:
                 for name_col in ["Libelle_UO", "uo", "libelle_uo"]:
                     try:
@@ -75,11 +84,12 @@ def get_bureau_name(bureau_id: str) -> str:
                                 return str(val).strip()
                     except Exception:
                         continue
-    except Exception:
+    except Exception as e:
+        st.sidebar.error(f"Erreur DB: {e}")
         pass
         
     return clean_id
-
+    
 def clean_record_for_json(record):
     """Nettoie les valeurs NaN, float invalides et adapte les types pour Supabase"""
     cleaned = {}
