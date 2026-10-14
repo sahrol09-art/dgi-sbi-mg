@@ -6,32 +6,33 @@ from supabase import create_client, Client
 from datetime import date
 
 # Configuration de la page Streamlit
-st.set_page_config(page_title="PROJET SERVICE DE LA BRIGADE D'INSPECTION (SBI)", page_icon="🏛️", layout="wide")
+st.set_page_config(page_title="SBI - DGI Madagascar", page_icon="🏛️", layout="wide")
 
-# CSS personnalisé pour un design 3D, des boutons stylés et des cartes interactives
+# CSS personnalisé pour un design 3D, des boutons stylés et des onglets en relief
 st.markdown("""
 <style>
     /* Style 3D pour le titre principal */
     .title-3d {
-        font-size: 38px;
+        font-size: 40px;
         font-weight: 900;
         text-align: center;
         background: linear-gradient(135deg, #1b5e20 0%, #fbc02d 50%, #b71c1c 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        text-shadow: 3px 3px 6px rgba(0,0,0,0.2);
-        margin-bottom: 20px;
+        text-shadow: 3px 3px 6px rgba(0,0,0,0.25);
+        margin-bottom: 10px;
         text-transform: uppercase;
         letter-spacing: 2px;
     }
     
-    /* Style interactif pour rendre les éléments cliquables évidents */
+    /* Style pour rendre les boutons et actions bien visibles */
     .stButton>button {
         width: 100%;
         border-radius: 8px;
         font-weight: bold;
-        background-color: #f0f2f6;
-        border: 2px solid #d1d5db;
+        background-color: #f8fafc;
+        border: 2px solid #cbd5e1;
+        color: #1e293b;
         transition: all 0.3s ease;
     }
     .stButton>button:hover {
@@ -212,24 +213,24 @@ def main_app():
         st.session_state["import_pending"] = None
         st.rerun()
 
-    # --- HEADER AVEC LES LOGOS ET LE TITRE 3D ---
+    # --- HEADER AVEC LES LOGOS ET LE TITRE 3D SBI ---
     col_logo1, col_title, col_logo2 = st.columns([1, 4, 1])
     
     with col_logo1:
         try:
-            st.image("republique.jpg", width=100)
+            st.image("republique.jpg", width=110)
         except Exception:
-            st.write("🇲🇬")
+            st.markdown("🇲🇬 **Madagascar**")
             
     with col_title:
-        st.markdown('<div class="title-3d">PROJET SERVICE DE LA BRIGADE D\'INSPECTION (SBI)</div>', unsafe_allow_html=True)
-        st.markdown(f"<p style='text-align: center; font-size: 16px; color: #555;'>Bienvenue, <b>{user.get('nom', '')}</b> ({bureau_name})</p>", unsafe_allow_html=True)
+        st.markdown('<div class="title-3d">SERVICE DE LA BRIGADE D\'INSPECTION (SBI)</div>', unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align: center; font-size: 16px; color: #475569;'>Bienvenue, <b>{user.get('nom', '')}</b> — <i>{bureau_name}</i></p>", unsafe_allow_html=True)
         
     with col_logo2:
         try:
-            st.image("dgi.jpg", width=100)
+            st.image("dgi.jpg", width=110)
         except Exception:
-            st.write("🏛️")
+            st.markdown("🏛️ **DGI**")
 
     st.write("---")
 
