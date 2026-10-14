@@ -1,5 +1,8 @@
 streamlit
-supabase
 pandas
+numpy
+supabase
+qrcode
+Pillow
+reportlab
 openpyxl
-qrcode[pil]
