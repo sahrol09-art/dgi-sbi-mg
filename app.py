@@ -5,6 +5,7 @@ import math
 from supabase import create_client, Client
 from datetime import date
 import qrcode
+from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
 # Configuration de la page Streamlit
@@ -133,13 +134,33 @@ def clean_record_for_json(record):
             cleaned[k] = str(v).strip()
     return cleaned
 
-def generate_qr_code(url: str):
+def generate_printable_qr_code(url: str):
+    """Mamorona sary Code QR miaraka amin'ny adiresy feno eo ambaniny mba hatao printy"""
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
     qr.add_data(url)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
+    qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
+    
+    # Manao taratasy fotsy lehibe kokoa hametrahana ilay adiresy eo ambany
+    qr_width, qr_height = qr_img.size
+    padding = 40
+    text_height = 50
+    total_height = qr_height + text_height + padding
+    
+    new_img = Image.new('RGB', (qr_width + (padding * 2), total_height), 'white')
+    new_img.paste(qr_img, (padding, padding))
+    
+    # Manatsika ilay URL eo ambany
+    draw = ImageDraw.Draw(new_img)
+    try:
+        font = ImageFont.load_default()
+    except Exception:
+        font = None
+        
+    draw.text((padding, qr_height + padding + 15), url, fill="black", font=font)
+    
     buffered = BytesIO()
-    img.save(buffered, format="PNG")
+    new_img.save(buffered, format="PNG")
     return buffered.getvalue()
 
 def login():
@@ -184,16 +205,16 @@ def main_app():
 
     bureau_name = get_bureau_name(user_bureau_id)
 
-    # --- VOLET GAUCHE (MENU STRUCTURÉ PROPRE) ---
+    # --- VOLET GAUCHE (MENU STRUCTURÉ PROPRE - CODE QR VOALOHANY) ---
     st.sidebar.title("📌 Navigation")
     
     menu_choice = st.sidebar.radio(
         "Sélectionnez un module :",
         [
+            "📱 Code QR", 
             "👤 Profil connecté", 
             "📁 Structure organisationnelle", 
             "👥 Gestion des utilisateurs", 
-            "📱 Code QR Application",
             "💰 Recette", 
             "💳 Virement", 
             "📊 BAR", 
@@ -248,7 +269,24 @@ def main_app():
 
     # --- GESTION DES AFFICHAGES SELON LE MENU CHOISI ---
 
-    if menu_choice.startswith("👤"):
+    if "Code QR" in menu_choice:
+        st.subheader("📱 Code QR de l'Application")
+        st.write("Scannez ce code QR avec un téléphone mobile ou téléchargez la version imprimable contenant l'adresse complète.")
+        app_url = "https://dgi-sbi-mg-z9ussubgf28w7rderjjchy.streamlit.app"
+        
+        printable_qr_bytes = generate_printable_qr_code(app_url)
+        
+        st.image(printable_qr_bytes, width=320)
+        
+        st.download_button(
+            label="📥 Télécharger le Code QR pour Impression (PNG)",
+            data=printable_qr_bytes,
+            file_name="QR_Code_Printable_SBI.png",
+            mime="image/png"
+        )
+        st.code(app_url, language="text")
+
+    elif menu_choice.startswith("👤"):
         st.subheader("👤 Profil Connecté")
         st.write(f"* **Nom :** {user.get('nom', '')}")
         st.write(f"* **Bureau / UO :** {bureau_name}")
@@ -282,14 +320,6 @@ def main_app():
             user_response = supabase.table("utilisateur").select("*").eq("bureau_id", user_bureau_id).execute()
             df_user = pd.DataFrame(user_response.data)
             st.dataframe(df_user, use_container_width=True)
-
-    elif "Code QR" in menu_choice:
-        st.subheader("📱 Code QR de l'Application")
-        st.write("Scannez ce code QR avec un téléphone mobile pour accéder directement à l'application SBI.")
-        app_url = "https://dgi-sbi-mg-z9ussubgf28w7rderjjchy.streamlit.app"
-        qr_bytes = generate_qr_code(app_url)
-        st.image(qr_bytes, width=250)
-        st.code(app_url, language="text")
 
     elif "Recette" in menu_choice:
         st.subheader("💰 Suivi des Recettes")
